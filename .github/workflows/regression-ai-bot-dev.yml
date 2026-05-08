@@ -1,0 +1,82 @@
+name: Regression AI Bot Tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  regression-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Run BFL_2 regression
+        id: bfl2
+        run: npx playwright test tests/bfl_2.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+
+      - name: Slack PASS notification
+        if: steps.bfl2.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ BFL_2 regression passed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*✅ BFL_2 regression passed*\n\nBot correctly remembers completed onboarding after reopening Text Chat.\n\n*Test:* `tests/bfl_2.spec.js`\n*Status:* PASSED\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+
+      - name: Slack FAIL notification
+        if: steps.bfl2.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ BFL_2 regression failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*❌ BFL_2 regression failed*\n\n*Bug:* Repeated onboarding detected after reopen.\n\nExpected behavior:\nBot should continue session and greet user normally.\n\nFailure behavior:\nBot asked user to finish onboarding again.\n\n*Test:* `tests/bfl_2.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+
+      - name: Fail workflow if test failed
+        if: steps.bfl2.outcome == 'failure'
+        run: exit 1
