@@ -2,6 +2,9 @@ name: Regression AI Bot Tests
 
 on:
   workflow_dispatch:
+  
+  schedule:
+    - cron: '45 6 * * *'
   push:
     branches: [main]
 
