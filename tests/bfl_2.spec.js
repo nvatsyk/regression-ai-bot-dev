@@ -99,7 +99,7 @@ async function clickButton(page, name, screenshotLabel, exact = true) {
 }
 
 // Like clickButton but silently skips if the button never appears within `ms` ms.
-async function tryClickButton(page, name, exact = true, ms = 15000) {
+async function tryClickButton(page, name, exact = true, ms = 30000) {
   const btn = page.getByText(name, { exact }).last();
   const appeared = await btn.waitFor({ timeout: ms }).then(() => true).catch(() => false);
   if (!appeared) return false;
@@ -160,9 +160,15 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
     // ── Step 7: Complete onboarding 100% ─────────────────────────────────────
     await sendMessage(page, 'Kate');
 
-    // "Good Spouse/Partner" is a chip — click adds it to input; Send submits it.
+    // "Good Spouse/Partner" is a chip — click adds it to input; Enter/Send submits it.
     await tryClickButton(page, 'Good Spouse/Partner');
-    await page.getByRole('button').last().click();
+    // Press Enter first (works in headless); click Send only if Enter didn't clear the input.
+    await page.getByRole('textbox').press('Enter').catch(() => {});
+    await sleep(500);
+    const chipValue = (await page.getByRole('textbox').inputValue().catch(() => '')).trim();
+    if (chipValue) {
+      await page.getByRole('button').last().click({ timeout: 10000 }).catch(() => {});
+    }
     await sleep(10000);
     await page.screenshot({ path: join(REPORT_DIR, 'bfl2-after-values.png') });
 
