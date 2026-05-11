@@ -18,6 +18,7 @@ const FAIL_PHRASES = [
   'finish the onboarding',
   'Once you are finished, we will switch to voice',
   'To help you get started',
+  'progress is saved automatically',
 ];
 
 // Node.js-level sleep — survives even when the browser page is closed.
@@ -261,32 +262,45 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
 
     // ── Step 14: Validate no repeated onboarding, correct greeting ────────────
     let failMatch = await detectFailPhrase(activePage);
-    const hasHiKate   = (await activePage.getByText('Hi Kate',                        { exact: false }).count()) > 0;
-    const hasCoach    = (await activePage.getByText('digital mental health coach',     { exact: false }).count()) > 0;
-    const hasFeeling  = (await activePage.getByText('How are you feeling today',       { exact: false }).count()) > 0;
+    const hasHiKate = (await activePage.getByText('Hi Kate',                    { exact: false }).count()) > 0;
+    const hasCoach  = (await activePage.getByText('digital mental health coach', { exact: false }).count()) > 0;
+    const hasZenn   = (await activePage.getByText('Zenn',                        { exact: false }).count()) > 0;
 
-    if (failMatch || !hasHiKate || !hasCoach || !hasFeeling) {
+    if (failMatch || !hasHiKate || !hasCoach || !hasZenn) {
       await activePage.screenshot({ path: join(REPORT_DIR, 'bfl2-reopen-fail.png') });
       const pageText = await collectPageText(activePage);
       const reason = failMatch
         ? `Fail phrase on reopen: "${failMatch}"`
-        : `Expected phrases missing — "Hi Kate": ${hasHiKate}, "digital mental health coach": ${hasCoach}, "How are you feeling today": ${hasFeeling}`;
+        : `Expected phrases missing — "Hi Kate": ${hasHiKate}, "digital mental health coach": ${hasCoach}, "Zenn": ${hasZenn}`;
       logFailure(testName, BUG_TITLE, failMatch ?? reason, pageText);
     }
 
-    expect(failMatch,  `Bug: ${BUG_TITLE}\n${BUG_DESCRIPTION}\nFail phrase: "${failMatch}"`).toBeNull();
-    expect(hasHiKate,  'Expected "Hi Kate" in bot response after reopening widget').toBe(true);
-    expect(hasCoach,   'Expected "digital mental health coach" in bot response after reopening widget').toBe(true);
-    expect(hasFeeling, 'Expected "How are you feeling today" in bot response after reopening widget').toBe(true);
+    expect(failMatch, `Bug: ${BUG_TITLE}\n${BUG_DESCRIPTION}\nFail phrase: "${failMatch}"`).toBeNull();
+    expect(hasHiKate, 'Expected "Hi Kate" in bot response after reopening widget').toBe(true);
+    expect(hasCoach,  'Expected "digital mental health coach" in bot response after reopening widget').toBe(true);
+    expect(hasZenn,   'Expected "Zenn" in bot response after reopening widget').toBe(true);
 
     // ── Step 15: Send "good" ──────────────────────────────────────────────────
+    // Snapshot text before sending so we can isolate only the bot's new reply.
+    // Prior session text (onboarding Q&A) may legitimately contain fail phrases
+    // and must not cause false failures in this assertion.
+    const textBeforeGood = await collectPageText(activePage);
     await sendMessage(activePage, 'good');
     await activePage.screenshot({ path: join(REPORT_DIR, 'bfl2-after-good.png') }).catch(() => {});
 
     // ── Step 16: Validate no onboarding regression after "good" ─────────────
-    // Exact coaching wording varies by LLM run — the only hard failure is an
-    // onboarding phrase appearing in a session where onboarding was already done.
-    failMatch = await detectFailPhrase(activePage);
+    // Only examine text that appeared AFTER we sent "good".
+    // Coaching wording varies by LLM run — the only hard failure is an
+    // onboarding-repeat phrase in the bot's new response.
+    const textAfterGood = await collectPageText(activePage);
+    const newTextAfterGood = textAfterGood.slice(textBeforeGood.length).toLowerCase();
+    failMatch = null;
+    for (const phrase of FAIL_PHRASES) {
+      if (newTextAfterGood.includes(phrase.toLowerCase())) {
+        failMatch = phrase;
+        break;
+      }
+    }
 
     if (failMatch) {
       await activePage.screenshot({ path: join(REPORT_DIR, 'bfl2-good-response-fail.png') });
