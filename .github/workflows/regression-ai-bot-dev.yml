@@ -2,14 +2,17 @@ name: Regression AI Bot Tests
 
 on:
   workflow_dispatch:
-  
+
   schedule:
-    - cron: '45 6 * * *'
-  push:
-    branches: [main]
+    # 09:00 Kyiv time = 06:00 UTC
+    - cron: '0 6 * * *'
+
+    # 09:30 Kyiv time = 06:30 UTC
+    - cron: '30 6 * * *'
 
 jobs:
-  regression-tests:
+  bfl-2-regression:
+    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 6 * * *' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -23,25 +26,28 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Install Playwright
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright Browsers
+        run: |
+          chmod +x node_modules/.bin/playwright
+          npx playwright install --with-deps chromium
 
       - name: Run BFL_2 regression
         id: bfl2
         run: npx playwright test tests/bfl_2.spec.js --reporter=html
         continue-on-error: true
 
-      - name: Upload HTML report
-        if: always()
+      - name: Upload BFL_2 HTML report
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: bfl-2-playwright-report
           path: playwright-report/
+          if-no-files-found: ignore
 
-      - name: Slack PASS notification
-        if: steps.bfl2.outcome == 'success'
+      - name: Slack BFL_2 PASS notification
+        if: ${{ steps.bfl2.outcome == 'success' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -60,8 +66,8 @@ jobs:
               ]
             }
 
-      - name: Slack FAIL notification
-        if: steps.bfl2.outcome == 'failure'
+      - name: Slack BFL_2 FAIL notification
+        if: ${{ steps.bfl2.outcome == 'failure' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -74,12 +80,91 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*❌ BFL_2 regression failed*\n\n*Bug:* Repeated onboarding detected after reopen.\n\nExpected behavior:\nBot should continue session and greet user normally.\n\nFailure behavior:\nBot asked user to finish onboarding again.\n\n*Test:* `tests/bfl_2.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    "text": "*❌ BFL_2 regression failed*\n\n*Bug:* Repeated onboarding detected after reopen.\n\nExpected behavior:\nBot should continue session and greet user normally.\n\n*Test:* `tests/bfl_2.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                   }
                 }
               ]
             }
 
-      - name: Fail workflow if test failed
-        if: steps.bfl2.outcome == 'failure'
+      - name: Fail BFL_2 workflow if test failed
+        if: ${{ steps.bfl2.outcome == 'failure' }}
+        run: exit 1
+
+  keyless-english-regression:
+    if: ${{ github.event_name != 'schedule' || github.event.schedule == '30 6 * * *' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: |
+          chmod +x node_modules/.bin/playwright
+          npx playwright install --with-deps chromium
+
+      - name: Run Keyless English regression
+        id: keyless
+        run: npx playwright test tests/keyless-english.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Keyless English HTML report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: keyless-english-playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+
+      - name: Slack Keyless PASS notification
+        if: ${{ steps.keyless.outcome == 'success' }}
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Keyless English regression passed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*✅ Keyless English regression passed*\n\nThe Keyless troubleshooting flow completed successfully.\n\n*Test:* `tests/keyless-english.spec.js`\n*Status:* PASSED\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+
+      - name: Slack Keyless FAIL notification
+        if: ${{ steps.keyless.outcome == 'failure' }}
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Keyless English regression failed",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*❌ Keyless English regression failed*\n\n*Flow:* Keyless mobile app unlock troubleshooting.\n\nExpected behavior:\nBot should guide the user through the documented Keyless troubleshooting flow and close the conversation correctly.\n\n*Test:* `tests/keyless-english.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                }
+              ]
+            }
+
+      - name: Fail Keyless workflow if test failed
+        if: ${{ steps.keyless.outcome == 'failure' }}
         run: exit 1
