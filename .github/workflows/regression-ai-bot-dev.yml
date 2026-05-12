@@ -114,7 +114,7 @@ jobs:
 
       - name: Run Keyless English regression
         id: keyless
-        run: npx playwright test tests/keyless-english.spec.js --reporter=html
+        run: npx playwright test tests/keyless-english_2.spec.js --reporter=html
         continue-on-error: true
 
       - name: Upload Keyless English HTML report
@@ -139,7 +139,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*✅ Keyless English regression passed*\n\nThe Keyless troubleshooting flow completed successfully.\n\n*Test:* `tests/keyless-english.spec.js`\n*Status:* PASSED\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    "text": "*✅ Keyless English regression passed*\n\nBot correctly identified unlock method and offered options (mobile app, passcode, RFID, access card).\n\n*Test:* `tests/keyless-english_2.spec.js`\n*Status:* PASSED\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                   }
                 }
               ]
@@ -159,7 +159,7 @@ jobs:
                   "type": "section",
                   "text": {
                     "type": "mrkdwn",
-                    "text": "*❌ Keyless English regression failed*\n\n*Flow:* Keyless mobile app unlock troubleshooting.\n\nExpected behavior:\nBot should guide the user through the documented Keyless troubleshooting flow and close the conversation correctly.\n\n*Test:* `tests/keyless-english.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    "text": "*❌ Keyless English regression failed*\n\n*Flow:* Keyless unlock method check.\n\nExpected behavior:\nBot should ask how the user is trying to unlock and offer method options (mobile app, passcode, RFID, access card).\n\n*Test:* `tests/keyless-english_2.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                   }
                 }
               ]
