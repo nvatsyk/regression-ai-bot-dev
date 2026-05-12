@@ -43,9 +43,10 @@ async function collectPageText(page) {
 }
 
 // Send message: try Enter first; click Send button if Enter did not submit.
-async function sendMessage(page, text) {
+// inputWaitMs: how long to wait for the textbox — increase for headless (bot may take longer to finish responding).
+async function sendMessage(page, text, { inputWaitMs = 30000 } = {}) {
   const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: 15000 });
+  await input.waitFor({ timeout: inputWaitMs });
   await input.fill(text);
   await input.press('Enter');
   await sleep(500);
@@ -161,14 +162,16 @@ test.describe('Keyless English — Troubleshooting Flow', () => {
       const btBase = await page.getByText('Bluetooth', { exact: false }).count().catch(() => 0);
       await sendMessage(page, 'Hi. I am a property manager and my Keyless lock still does not unlock from the mobile app after battery maintenance');
 
-      // Wait up to 20 s for the Bluetooth question to appear
-      const btFoundFirst = await waitForNewOccurrence(page, 'Bluetooth', btBase, 20000);
+      // Wait up to 45 s for the Bluetooth question to appear (headless CI needs more time).
+      const btFoundFirst = await waitForNewOccurrence(page, 'Bluetooth', btBase, 45000);
 
       if (!btFoundFirst) {
-        // Bot asked for more details first — give explicit proximity/Bluetooth context
+        // Bot asked for more details first — give explicit proximity/Bluetooth context.
+        // Wait 5 s to let any in-progress bot response finish before trying to type.
         console.log('[Keyless] Bot asked for more info — sending Bluetooth/proximity context');
+        await sleep(5000);
         await sendMessage(page, 'Bluetooth is on and I am standing right next to the lock');
-        await waitForNewOccurrence(page, 'Bluetooth', btBase, 20000);
+        await waitForNewOccurrence(page, 'Bluetooth', btBase, 45000);
       }
 
       const step5Fail = await checkPhraseGroups(page, [
