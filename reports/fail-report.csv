@@ -1,0 +1,400 @@
+timestamp,dialog_id,description,last_user_message,expected_phrases,bot_response
+"2026-05-07T11:46:48.966Z","BFL remembers user after reopen","Pass conditions not met — name found: false, context found: false","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-07T11:55:30.824Z","BFL remembers user after reopen","Pass conditions not met — name found: false, context found: false","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-07T13:25:04.134Z","BFL remembers user after reopen","Pass conditions not met — name found: false, context found: false","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-07T13:57:50.642Z","BFL remembers user after reopen","Fail phrase detected: ""please finish the onboarding first""","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-07T15:36:25.718Z","BFL remembers user after reopen","Fail phrase detected: ""please finish the onboarding first""","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-07T16:11:39.192Z","BFL remembers user after reopen","Fail phrase detected: ""please finish the onboarding first""","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-08T05:05:50.717Z","BFL_2 onboarding persistence after 2 minutes","Repeated onboarding after completed onboarding","Expected phrases missing after ""good"" — ""Glad to hear"": false, ""What would you like to focus on today"": false","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-11T11:00:40.499Z","BFL_2 onboarding persistence after 2 minutes","Repeated onboarding after completed onboarding","Fail phrase after ""good"": ""please finish the onboarding first""","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T12:03:06.459Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 3: Greeting","UXE support mention","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T12:09:36.047Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 11 — manufacturer question (ISEO or Rayonics)","manufacturer question","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T12:14:33.050Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 11: Manufacturer","ISEO or Rayonics manufacturer options","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T12:19:02.545Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 5 — proximity and Bluetooth check","proximity / close to lock","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T12:26:53.498Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 21 — goodbye","farewell","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T13:15:04.460Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 5: Proximity and Bluetooth","proximity / close to lock","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T13:57:55.355Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 7 — Find Nearby Devices instruction","""Find Nearby Devices"" path","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T14:17:13.454Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 5: Bluetooth check","Bluetooth check","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T14:22:41.447Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 5: Bluetooth / proximity / Find Nearby Devices","Bluetooth / proximity / Find Nearby Devices","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T14:32:42.971Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 5: Bluetooth / proximity / Find Nearby Devices","Bluetooth / proximity / Find Nearby Devices","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T14:41:42.557Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 5: Bluetooth / proximity / Find Nearby Devices","Bluetooth / proximity / Find Nearby Devices","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T14:50:34.083Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 9 — re-explanation with RC code reference","RC code mention","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "
+"2026-05-12T15:09:06.617Z","Keyless English — full troubleshooting flow","Keyless English troubleshooting flow regression","Step 5: Bluetooth / proximity / Find Nearby Devices","Bluetooth / proximity / Find Nearby Devices","
+     
+         
+             
+                 
+                     
+                     Your Company 
+                 
+                 
+                     
+                         Who we are 
+                         Our Services 
+                         Our Prices 
+                         Blog 
+                         Career 
+                     
+                 
+                 
+ "

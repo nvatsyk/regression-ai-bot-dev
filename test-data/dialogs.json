@@ -1,0 +1,122 @@
+[
+  {
+    "id": "greeting-hi",
+    "description": "Basic greeting with Hi",
+    "messages": ["Hi"],
+    "expected": ["Thank you for calling The Oven Cleaners"]
+  },
+  {
+    "id": "greeting-hello",
+    "description": "Greeting with Hello",
+    "messages": ["Hello"],
+    "expected": ["Thank you for calling The Oven Cleaners", "welcome", "hello"]
+  },
+  {
+    "id": "greeting-good-morning",
+    "description": "Greeting with Good morning",
+    "messages": ["Good morning"],
+    "expected": ["Thank you for calling The Oven Cleaners", "morning", "welcome"]
+  },
+  {
+    "id": "single-oven-no-hobs",
+    "description": "Quote for single oven without hobs",
+    "messages": ["I need a quote", "single oven", "no hobs"],
+    "expected": ["forty five", "45"]
+  },
+  {
+    "id": "double-oven-no-hobs",
+    "description": "Quote for double oven without hobs",
+    "messages": ["I want oven cleaning", "double oven", "no hobs"],
+    "expected": ["sixty five", "65"]
+  },
+  {
+    "id": "single-oven-with-2-hobs",
+    "description": "Quote for single oven with 2 hobs",
+    "messages": ["I need a quote please", "single oven", "yes hobs", "2"],
+    "expected": ["pound", "£"]
+  },
+  {
+    "id": "single-oven-with-4-hobs",
+    "description": "Quote for single oven with 4 hobs",
+    "messages": ["How much to clean my oven?", "single oven", "yes", "4"],
+    "expected": ["pound", "£"]
+  },
+  {
+    "id": "double-oven-with-2-hobs",
+    "description": "Quote for double oven with 2 hobs",
+    "messages": ["Can I get a price?", "double oven", "yes", "2"],
+    "expected": ["pound", "£"]
+  },
+  {
+    "id": "double-oven-with-4-hobs",
+    "description": "Quote for double oven with 4 hobs",
+    "messages": ["Can I get a quote?", "double oven", "yes", "4"],
+    "expected": ["pound", "£"]
+  },
+  {
+    "id": "range-cooker-quote",
+    "description": "Quote inquiry for range cooker",
+    "messages": ["I have a range cooker, how much to clean it?"],
+    "expected": ["range", "cooker", "pound", "£", "oven"]
+  },
+  {
+    "id": "aga-cleaning-inquiry",
+    "description": "AGA oven cleaning inquiry",
+    "messages": ["Do you clean AGA ovens?"],
+    "expected": ["AGA", "oven", "clean", "range", "contact"]
+  },
+  {
+    "id": "booking-after-quote",
+    "description": "Book appointment after getting a single oven quote",
+    "messages": ["I need a quote", "single oven", "no hobs", "I'd like to book that"],
+    "expected": ["book", "appointment", "date", "available", "schedule", "contact", "call"]
+  },
+  {
+    "id": "what-is-included",
+    "description": "Ask what is included in the oven cleaning service",
+    "messages": ["What does your oven cleaning include?"],
+    "expected": ["includ", "rack", "door", "tray", "clean", "oven"]
+  },
+  {
+    "id": "cleaning-duration",
+    "description": "Ask how long the cleaning takes",
+    "messages": ["How long does the oven cleaning take?"],
+    "expected": ["hour", "time", "approximately", "take", "minute", "long"]
+  },
+  {
+    "id": "service-area",
+    "description": "Ask about geographical service coverage",
+    "messages": ["Do you cover my area?"],
+    "expected": ["area", "cover", "postcode", "location", "contact"]
+  },
+  {
+    "id": "payment-methods",
+    "description": "Ask about available payment methods",
+    "messages": ["How do I pay for the service?"],
+    "expected": ["pay", "card", "cash", "payment", "transfer", "invoice"]
+  },
+  {
+    "id": "cancellation-policy",
+    "description": "Ask about cancellation or rescheduling",
+    "messages": ["Can I cancel my appointment?"],
+    "expected": ["cancel", "reschedule", "notice", "appointment", "change", "contact"]
+  },
+  {
+    "id": "discount-inquiry",
+    "description": "Ask about available discounts or offers",
+    "messages": ["Do you have any discounts or special offers?"],
+    "expected": ["discount", "offer", "deal", "pound", "£", "special"]
+  },
+  {
+    "id": "microwave-cleaning",
+    "description": "Ask whether microwave cleaning is available",
+    "messages": ["Can you also clean my microwave?"],
+    "expected": ["microwave", "clean", "add", "extra", "include"]
+  },
+  {
+    "id": "out-of-scope-internet",
+    "description": "Out-of-scope request: internet help",
+    "messages": ["Can you help me with my internet connection?"],
+    "expected": ["sorry", "only help", "oven-cleaning", "oven", "cleaning"]
+  }
+]

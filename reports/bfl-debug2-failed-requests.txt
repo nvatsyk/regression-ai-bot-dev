@@ -1,0 +1,2 @@
+POST https://uat-api.nextlevel.ai/app/analytics — net::ERR_ABORTED
+POST https://uat-api.nextlevel.ai/app/analytics — net::ERR_ABORTED

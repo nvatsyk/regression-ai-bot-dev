@@ -1,0 +1,87 @@
+[
+  {
+    "id": "interested-new-build-builder",
+    "description": "New-build builder engages on design value — bot qualifies, pitches, proposes Vincent call, books Monday 2 PM",
+    "messages": [
+      "That actually sounds interesting. Tell me a bit more.",
+      "Mostly new builds.",
+      "Yeah, showing clients visual options early is usually how we close the deal.",
+      "That makes sense — we do spend a lot of time on design conversations before anything gets drawn up.",
+      "Sure, a short call sounds good.",
+      "Monday 2 PM",
+      "Ok"
+    ],
+    "expected": [
+      "Vincent", "Monday", "2 PM", "2:00", "confirm", "book",
+      "consented", "plan", "Home Design Vault", "architectural", "300", "new build"
+    ]
+  },
+  {
+    "id": "skeptical-builder-with-architects",
+    "description": "Skeptical builder with existing architects — objection handled, sees early access value, bot proposes call, books Tomorrow 2 PM",
+    "messages": [
+      "Not sure how this applies to us — we already work with architects.",
+      "Mix of new builds and some renos.",
+      "I suppose faster access to consented plans could have some value, yeah.",
+      "The early access and builder input angle is fair enough I guess.",
+      "Alright, I'm happy to listen in on a call.",
+      "Tomorrow 2 PM",
+      "Ok"
+    ],
+    "expected": [
+      "Vincent", "tomorrow", "2 PM", "2:00", "confirm", "book",
+      "architect", "early access", "consented", "plan", "Home Design Vault", "300", "input"
+    ]
+  },
+  {
+    "id": "busy-builder-time-pressure",
+    "description": "Busy builder wants a quick pitch — quoting value resonates, asks call length, bot reassures with short call, books Next Monday 2 PM",
+    "messages": [
+      "I'm pretty slammed. What's the short version?",
+      "We do new builds.",
+      "OK the quoting angle is interesting — that part does take us a lot of time.",
+      "How long is the call though? I can't commit to an hour.",
+      "OK, if it's only 15 minutes I can fit that in.",
+      "Next Monday 2 PM",
+      "Ok"
+    ],
+    "expected": [
+      "Vincent", "Monday", "next Monday", "2 PM", "2:00", "confirm", "book",
+      "short", "15", "quick", "consented", "plan", "Home Design Vault", "quote"
+    ]
+  },
+  {
+    "id": "renovation-focused-builder",
+    "description": "Renovation builder — bot adapts pitch, scoping and sales conversion value resonates, bot proposes call, books Tuesday 2 PM",
+    "messages": [
+      "I mainly do renos and extensions. Does this actually apply for that kind of work?",
+      "Mainly residential renos — kitchens, extensions, that sort of thing.",
+      "OK, having reference plans when I'm scoping a job with a client would save time for sure.",
+      "True — when clients can picture options early it definitely helps you close.",
+      "Happy to have a listen. What does Vincent want to cover?",
+      "Tuesday 2 PM",
+      "Ok"
+    ],
+    "expected": [
+      "Vincent", "Tuesday", "2 PM", "2:00", "confirm", "book",
+      "renovation", "extension", "consented", "plan", "Home Design Vault", "architectural", "client"
+    ]
+  },
+  {
+    "id": "commercial-builder-cost-objection",
+    "description": "Commercial builder with residential side work — redirected, cost objection handled, bot proposes call, books Wednesday 2 PM",
+    "messages": [
+      "We mostly do commercial projects. I'm not sure this is for us.",
+      "We do take on residential new builds on the side.",
+      "Fair enough, I can see it being useful for the residential work.",
+      "What does it cost though? We're not looking to add expenses right now.",
+      "OK, if it's free at this stage then a call makes sense.",
+      "Wednesday 2 PM",
+      "Ok"
+    ],
+    "expected": [
+      "Vincent", "Wednesday", "2 PM", "2:00", "confirm", "book",
+      "commercial", "residential", "cost", "early access", "consented", "plan", "Home Design Vault", "300"
+    ]
+  }
+]

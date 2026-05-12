@@ -1,0 +1,191 @@
+[
+  {
+    "id": "start-qualification",
+    "messages": [
+      "Switch to English",
+      "Hi, I’m interested in cosmetic procedures",
+      "I want to improve my face"
+    ],
+    "expected": ["skin treatments", "fillers", "surgical"]
+  },
+  {
+    "id": "rhinoplasty",
+    "messages": [
+      "Switch to English",
+      "I want rhinoplasty"
+    ],
+    "expected": ["rhinoplasty", "natural results", "breathing"]
+  },
+  {
+    "id": "price-qualification",
+    "messages": [
+      "Switch to English",
+      "I want rhinoplasty",
+      "How much does it cost?"
+    ],
+    "expected": ["cost depends", "consultation", "specific case"]
+  },
+  {
+    "id": "first-time-call",
+    "messages": [
+      "Switch to English",
+      "I want rhinoplasty",
+      "How much does it cost?",
+      "First time"
+    ],
+    "expected": ["consultation", "specialist", "call"]
+  },
+  {
+    "id": "arabic-filler",
+    "messages": [
+      "اريد فيلر للوجه"
+    ],
+    "expected": ["الفيلر", "الوجه", "طبيعي"]
+  },
+  {
+    "id": "mixed-language-facelift",
+    "messages": [
+      "I want facelift بس خايف من العملية"
+    ],
+    "expected": ["طبيعي", "جراحية", "غير جراحية"]
+  },
+  {
+    "id": "fear-of-surgery",
+    "messages": [
+      "Switch to English",
+      "I’m scared of surgery"
+    ],
+    "expected": ["understandable", "non-surgical", "fillers"]
+  },
+  {
+    "id": "hair-transplant",
+    "messages": [
+      "Switch to English",
+      "Do you do hair transplant?"
+    ],
+    "expected": ["DHI", "hair transplant", "natural hairline"]
+  },
+  {
+    "id": "acne-mixed-arabic",
+    "messages": [
+      "I have acne مشكلة كبيرة"
+    ],
+    "expected": ["حب الشباب", "HydraFacial", "بشرتك"]
+  },
+  {
+    "id": "dermatology-consultation-upsell",
+    "messages": [
+      "Switch to English",
+      "I have acne",
+      "For a long time"
+    ],
+    "expected": ["personalized", "treatment plan", "dermatologist"]
+  },
+  {
+    "id": "weight-loss",
+    "messages": [
+      "Switch to English",
+      "I want to lose weight fast"
+    ],
+    "expected": ["gastric balloon", "bariatric", "diet"]
+  },
+  {
+    "id": "weight-loss-qualification",
+    "messages": [
+      "Switch to English",
+      "I want to lose weight fast",
+      "Yes, nothing worked"
+    ],
+    "expected": ["gastric balloon", "sleeve", "specialist"]
+  },
+  {
+    "id": "locations",
+    "messages": [
+      "Switch to English",
+      "Where are you located?"
+    ],
+    "expected": ["Dubai", "Abu Dhabi", "Sharjah"]
+  },
+  {
+    "id": "dubai-clinic",
+    "messages": [
+      "Switch to English",
+      "Where are you located?",
+      "Dubai"
+    ],
+    "expected": ["Jumeirah", "Marina", "Palm Jumeirah"]
+  },
+  {
+    "id": "book-appointment",
+    "messages": [
+      "Switch to English",
+      "Yes, book appointment"
+    ],
+    "expected": ["phone number", "confirm", "appointment"]
+  },
+  {
+    "id": "invalid-phone",
+    "messages": [
+      "Switch to English",
+      "Yes, book appointment",
+      "050123"
+    ],
+    "expected": ["valid phone number", "country code"]
+  },
+  {
+    "id": "valid-phone",
+    "messages": [
+      "Switch to English",
+      "Yes, book appointment",
+      "+971501234567"
+    ],
+    "expected": ["contact you", "confirm", "preferred time"]
+  },
+  {
+    "id": "no-call",
+    "messages": [
+      "Switch to English",
+      "I don’t want a call"
+    ],
+    "expected": ["No worries", "helping you here"]
+  },
+  {
+    "id": "languages",
+    "messages": [
+      "Switch to English",
+      "What languages do you speak?"
+    ],
+    "expected": ["English", "Arabic"]
+  },
+  {
+    "id": "switch-arabic",
+    "messages": [
+      "تكلم عربي"
+    ],
+    "expected": ["تمام", "كيف أقدر أساعدك"]
+  },
+  {
+    "id": "out-of-scope-politics",
+    "messages": [
+      "Switch to English",
+      "Tell me about politics"
+    ],
+    "expected": ["CosmeSurge", "services", "treatments"]
+  },
+  {
+    "id": "doctor-question",
+    "messages": [
+      "Switch to English",
+      "Who is the best doctor?"
+    ],
+    "expected": ["doctors", "specialists", "treatment"]
+  },
+  {
+    "id": "thanks",
+    "messages": [
+      "Switch to English",
+      "Thanks"
+    ],
+    "expected": ["welcome", "anything else"]
+  }
+]

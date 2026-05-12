@@ -1,0 +1,928 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sample demo website</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link rel="icon" href="https://nextlevel.ai/wp-content/uploads/2025/01/Logo.png" sizes="32x32">
+    <link rel="icon" href="https://nextlevel.ai/wp-content/uploads/2025/01/Logo.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://nextlevel.ai/wp-content/uploads/2025/01/Logo.png">
+    <meta name="msapplication-TileImage" content="https://nextlevel.ai/wp-content/uploads/2025/01/Logo.png">
+    <link rel="stylesheet" href="css/style.min.css">
+    <script defer="defer" src="https://uat-cdn.nextlevel.ai/widgets/ai-agents-web-widget_current.js"></script>
+<style>.sp-ai-widget-menu-container {
+  position: absolute;
+  top: -32px;
+  right: 0;
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  gap: 4px;
+}
+
+.sp-ai-close-container,
+.sp-ai-expand-container,
+.sp-ai-tooltip-popup-close-button {
+  cursor: pointer;
+  user-select: none;
+  height: 24px;
+  width: 24px;
+}
+
+.sp-ai-expand-container > svg {
+  padding: 4px;
+}
+
+.sp-ai-close-container > svg,
+.sp-ai-expand-container > svg,
+.sp-ai-tooltip-popup-close-button > svg {
+  border-radius: 50%;
+}
+
+.sp-ai-expand-container > svg {
+  background: var(--spColorsControlsBg);
+}
+.sp-ai-expand-container > svg > path {
+  fill: var(--spColorsControls);
+}
+
+.sp-ai-tooltip-popup-close-button:hover > svg > rect,
+.sp-ai-close-container:hover > svg > rect {
+  fill: var(--spColorsBad, #f52255);
+}
+.sp-ai-tooltip-popup-close-button:hover > svg > path,
+.sp-ai-close-container:hover > svg > path {
+  stroke: white;
+}
+
+.sp-ai-expand-container:hover > svg {
+  background: #feb429;
+}
+.sp-ai-expand-container:hover > svg > path {
+  fill: var(--spColorsBrand);
+}
+
+.sp-ai-tooltip-popup-close-button,
+.sp-ai-widget-main-container .sp-ai-close-container,
+.sp-ai-widget-main-container .sp-ai-expand-container {
+  transition:
+    right 0.4s ease,
+    left 0.4s ease;
+  transition-delay: 0.1s;
+}
+
+.sp-ai-tooltip-popup-close-button > svg > *,
+.sp-ai-widget-main-container .sp-ai-close-container > svg > *,
+.sp-ai-widget-main-container .sp-ai-expand-container > svg > * {
+  transition: fill 0.2s ease;
+  transition-delay: 0.1s;
+}
+.sp-ai-widget-main-container .sp-ai-expand-container > svg {
+  transition: background-color 0.2s ease;
+  transition-delay: 0.1s;
+}
+
+.sp-ai-widget-anchor.sp-ai-dragging * {
+  pointer-events: none !important;
+}
+
+.sp-ai-export-to-pdf-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 2px;
+  border: 0;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 32px;
+
+  cursor: pointer;
+  opacity: 0.9;
+  flex-shrink: 0;
+  background: white;
+}
+.sp-ai-export-to-pdf-button:disabled {
+  pointer-events: none;
+}
+.sp-ai-export-to-pdf-button:disabled > svg {
+  opacity: 0.2;
+}
+.sp-ai-export-to-pdf-button:hover {
+  opacity: 1;
+}
+</style><style>.sp-ai-html-popup,
+.sp-ai-html-popup * {
+  box-sizing: border-box;
+}
+
+.sp-ai-html-popup {
+  --header-height: 65px;
+  --element-border-radius: 12px !important;
+
+  position: fixed;
+
+  width: var(--spDesktopWidth);
+  height: var(--spDesktopHeight);
+  min-height: var(--spDesktopHeight);
+  max-height: var(--spDesktopHeight);
+
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--element-border-radius);
+  background: white;
+}
+
+.sp-ai-html-header {
+  position: relative;
+  flex-grow: 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 12px 16px;
+  height: var(--header-height);
+  background: var(--spColorsBackground);
+  border-top-left-radius: var(--element-border-radius);
+  border-top-right-radius: var(--element-border-radius);
+}
+
+.sp-ai-html-header-title {
+  color: white;
+
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sp-ai-html-content {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+
+  overflow: hidden;
+  background: white;
+  border-bottom-left-radius: var(--element-border-radius);
+  border-bottom-right-radius: var(--element-border-radius);
+}
+.sp-ai-html-popup-tab-content-container {
+  display: flex;
+  flex-direction: column;
+
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.sp-ai-html-content .sp-ai-html-popup-spinner-container {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.sp-ai-html-popup iframe {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.sp-ai-html-popup-presentation-mode {
+  position: fixed !important;
+
+  top: 0 !important;
+  left: 0 !important;
+  width: 100dvw !important;
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+}
+
+.sp-ai-html-tabs {
+  min-height: 32px;
+  overflow-x: auto;
+  background: #f5f7f9;
+
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--spColorsBrand);
+
+  flex-grow: 0;
+  flex-shrink: 0;
+}
+.sp-ai-html-tabs .sp-ai-html-tab {
+  font-weight: 600;
+  font-size: 12px;
+
+  line-height: 16px;
+  letter-spacing: 0;
+
+  cursor: pointer;
+  padding: 8px 12px;
+  border-right: 1px solid #e8ebef;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sp-ai-html-tabs .sp-ai-html-tab.sp-ai-html-active-tab {
+  background: white;
+}
+
+.sp-ai-html-tab .sp-ai-html-tab-close {
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+  border-radius: 100%;
+  opacity: 0.8;
+  cursor: pointer;
+}
+.sp-ai-html-tab .sp-ai-html-tab-close:hover {
+  opacity: 1;
+}
+
+.sp-ai-interrupted-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+}
+.sp-ai-interrupted-element {
+  width: min(280px, 60%);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  row-gap: 16px;
+}
+.sp-ai-interrupted-icon {
+  width: 64px;
+  height: 64px;
+}
+.sp-ai-interrupted-title {
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 20px;
+  letter-spacing: 0;
+  text-align: center;
+}
+.sp-ai-interrupted-subtitle {
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.sp-ai-html-popup-menu-item {
+  border-radius: 8px;
+  outline-offset: -2px;
+  outline-color: transparent;
+
+  transition:
+    outline-color 0.3s ease,
+    outline-offset 0.3s ease;
+}
+.sp-ai-html-popup-menu-item:hover {
+  outline: 1px solid #191919;
+  outline-offset: 2px;
+}
+
+@media screen and (max-width: 768px) {
+  .sp-ai-html-popup {
+    width: var(--spMobileWidth);
+    height: var(--spMobileHeight);
+    min-height: var(--spMobileHeight);
+    max-height: var(--spMobileHeight);
+  }
+}
+</style><style>.sp-ai-image-container {
+  cursor: default;
+  position: relative;
+
+  border-radius: 50%;
+
+  width: var(--widget-size, 32px);
+  height: var(--widget-size, 32px);
+
+  transition: all;
+  flex-shrink: 0;
+}
+.sp-ai-image-border {
+  outline: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.sp-ai-image {
+  height: 100%;
+  width: 100%;
+
+  user-select: none;
+
+  transition-delay: 0.1s;
+  transition: filter 0.2s ease;
+
+  border-radius: 50%;
+  display: block;
+}
+
+.sp-ai-image-overlay {
+  position: absolute;
+
+  opacity: 0;
+
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+
+  transition: opacity 0.2s ease;
+  transition-delay: 0.1s;
+
+  /* display: flex; */
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+/* @media (hover: hover) and (pointer: fine) {
+  .sp-ai-image-container:hover .sp-ai-image {
+    filter: blur(1px);
+  }
+  .sp-ai-image-container:hover .sp-ai-image-overlay {
+    opacity: 1;
+  }
+}
+
+.sp-ai-image-container.sp-ai-hover .sp-ai-image {
+  filter: blur(1px);
+}
+.sp-ai-image-container.sp-ai-hover .sp-ai-image-overlay {
+  opacity: 1;
+} */
+</style><style>.sp-ai-widget-emote {
+  position: absolute;
+  font-size: 2rem;
+  animation: sp-ai-float 2.5s ease-out forwards;
+  z-index: 1;
+}
+.sp-ai-widget-emote.drown {
+  animation: sp-ai-drown 2.5s ease-out forwards;
+}
+</style><style>@supports (-webkit-scrollbar: none) {
+  .sp-ai-widget-anchor *,
+  .sp-ai-widget-transcribe *,
+  .sp-ai-html-popup *,
+  .sp-ai-static-widget-container * {
+    scrollbar-width: thin;
+    scrollbar-color: #444;
+  }
+}
+
+.sp-ai-widget-anchor *::-webkit-scrollbar,
+.sp-ai-html-popup *::-webkit-scrollbar,
+.sp-ai-widget-transcribe *::-webkit-scrollbar,
+.sp-ai-static-widget-container *::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.sp-ai-widget-anchor *::-webkit-scrollbar-track,
+.sp-ai-widget-html-popup *::-webkit-scrollbar-track,
+.sp-ai-widget-transcribe *::-webkit-scrollbar-track,
+.sp-ai-static-widget-container *::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 6px;
+}
+
+.sp-ai-widget-anchor *::-webkit-scrollbar-thumb,
+.sp-ai-widget-html-popup *::-webkit-scrollbar-thumb,
+.sp-ai-widget-transcribe *::-webkit-scrollbar-thumb,
+.sp-ai-static-widget-container *::-webkit-scrollbar-thumb {
+  background-color: #888;
+  border-radius: 6px;
+  border: 3px solid #f0f0f0;
+}
+
+.sp-ai-widget-anchor *::-webkit-scrollbar-thumb:hover,
+.sp-ai-widget-html-popup *::-webkit-scrollbar-thumb:hover,
+.sp-ai-widget-transcribe *::-webkit-scrollbar-thumb:hover,
+.sp-ai-static-widget-container *::-webkit-scrollbar-thumb:hover {
+  background-color: #555;
+}
+
+.sp-ai-widget-anchor *::-webkit-scrollbar-thumb,
+.sp-ai-widget-html-popup *::-webkit-scrollbar-thumb,
+.sp-ai-widget-transcribe *::-webkit-scrollbar-thumb,
+.sp-ai-static-widget-container *::-webkit-scrollbar-thumb {
+  background-color: #444;
+}
+</style><style>.sp-ai-static-widget-container {
+  --spacing: 24px;
+  --licence-height: 20px;
+  --buttons-spacing: 8px;
+
+  container-type: size;
+  container-name: sp-ai-widget-container;
+
+  position: fixed;
+  transform: translateZ(0);
+  width: var(--spDesktopWidth);
+
+  height: var(--spDesktopHeight);
+  min-height: var(--spDesktopHeight);
+  max-height: var(--spDesktopHeight);
+
+  display: flex;
+  flex-direction: column;
+}
+
+.sp-ai-static-widget-component-container {
+  position: relative;
+
+  width: 100%;
+  height: 100%;
+
+  padding-top: 0;
+
+  background: var(--fancy-border) border-box;
+  border-radius: var(--element-border-radius, 24px);
+}
+
+.sp-ai-static-widget-component {
+  width: 100%;
+  height: 100%;
+  position: relative;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+  background: var(--spColorsBackground);
+  border-radius: var(--element-border-radius, 24px);
+}
+
+.sp-ai-static-actions-overlay {
+  position: absolute;
+
+  top: 0;
+  left: 0;
+  padding: var(--spacing);
+
+  width: 100%;
+  height: 100%;
+
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+}
+.sp-ai-static-actions-overlay.sp-ai-with-licence {
+  padding-bottom: max(var(--spacing), var(--licence-height, 20px));
+}
+
+.sp-ai-static-text-greeting {
+  --text-lines: 3;
+  --font-size: var(--spDesktopFontSize);
+  --text-height: calc(var(--font-size) * 1.4);
+
+  color: white;
+
+  font-weight: 600;
+  font-size: var(--font-size);
+  line-height: var(--text-height);
+  max-height: calc(var(--text-height) * var(--text-lines));
+  letter-spacing: 0;
+
+  text-align: left;
+
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+
+  overflow-y: hidden;
+}
+.sp-ai-static-greeting {
+  margin-top: auto;
+  margin-bottom: 0.5em;
+}
+.sp-ai-static-button {
+  --main-color: white;
+  --bg-color: var(--spColorsControlsBg);
+  outline: 1px solid transparent;
+
+  transition: outline-color 0.2s ease;
+
+  color: var(--main-color);
+  background: var(--bg-color);
+  border: 1px solid var(--main-color);
+
+  flex-shrink: 0;
+
+  height: 40px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  width: 100%;
+
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0;
+  text-align: center;
+  text-transform: uppercase;
+
+  cursor: pointer;
+
+  padding: 0 8px;
+}
+button.sp-ai-static-button:active,
+button.sp-ai-static-button:focus {
+  background: var(--bg-color);
+}
+.sp-ai-static-button:hover {
+  outline: 1px solid var(--main-color);
+}
+.sp-ai-static-button svg {
+  flex-shrink: 0;
+}
+.sp-ai-static-button span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+*:not(.sp-ai-static-button) + .sp-ai-static-button {
+  margin-top: var(--buttons-spacing) !important;
+}
+.sp-ai-static-buttons-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--buttons-spacing);
+}
+.sp-ai-static-buttons-container > .sp-ai-static-button {
+  flex-shrink: 1;
+  overflow: hidden;
+}
+
+.sp-ai-static-voice,
+.sp-ai-static-video {
+  --main-color: var(--spStaticWidgetButtonsColor);
+}
+.sp-ai-static-text {
+  --main-color: var(--spStaticWidgetButtonsTextButtonColor);
+}
+.sp-ai-static-jessica {
+  --mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 35%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  position: relative;
+  width: 100%;
+
+  object-fit: cover;
+  aspect-ratio: 16/12;
+
+  -webkit-mask-image: var(--mask-image);
+  mask-image: var(--mask-image);
+
+  background-size: cover;
+  background-position: center;
+}
+.sp-ai-static-widget-component .sp-ai-static-jessica {
+  overflow: hidden;
+}
+
+.sp-ai-static-menu {
+  display: flex;
+  align-items: center;
+  justify-content: end;
+  gap: 4px;
+
+  flex-shrink: 0;
+
+  height: var(--menu-height, 36px);
+  padding-top: 4px;
+  padding-bottom: 8px;
+}
+
+.sp-ai-static-expand,
+.sp-ai-static-close {
+  width: 24px;
+  height: 24px;
+}
+.sp-ai-static-expand > svg,
+.sp-ai-static-close > svg {
+  width: 24px;
+  height: 24px;
+
+  cursor: pointer;
+  border-radius: 100%;
+  box-shadow: 0px 4px 8px 0px #a79cf7a6;
+}
+.sp-ai-static-expand:hover > svg > rect,
+.sp-ai-static-expand:hover > svg > path {
+  transition:
+    fill 0.2s ease,
+    stroke 0.2s ease,
+    color 0.2s ease,
+    background 0.2s ease;
+  transition-delay: 0.1s;
+}
+.sp-ai-static-expand:hover > svg > rect {
+  fill: #feb429;
+}
+.sp-ai-static-expand:hover > svg > path {
+  fill: var(--spColorsBrand);
+}
+
+.sp-ai-static-close > svg:hover > rect,
+.sp-ai-static-close > svg:hover > path {
+  transition:
+    fill 0.2s ease,
+    stroke 0.2s ease,
+    color 0.2s ease,
+    background 0.2s ease;
+  transition-delay: 0.1s;
+}
+.sp-ai-static-close > svg:hover > rect {
+  fill: var(--spColorsBad, #f52255);
+}
+.sp-ai-static-close > svg:hover > path {
+  stroke: white;
+}
+
+.sp-ai-static-widget-connecting-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+
+  display: none;
+  background: var(--spColorsBackground);
+  border-radius: var(--element-border-radius, 24px);
+}
+.sp-ai-static-widget-connecting-overlay-container {
+  padding: var(--spacing);
+  height: 100%;
+  width: 100%;
+
+  display: flex;
+  flex-direction: column;
+}
+.sp-ai-static-widget-connecting-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  gap: 32px;
+
+  width: 100%;
+  flex-grow: 1;
+
+  padding: 0 20%;
+}
+.sp-ai-static-widget-connecting-title {
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 24px;
+  letter-spacing: 0;
+  text-align: center;
+
+  color: var(--spColorsControls);
+}
+.sp-ai-static-widget-connecting-subtitle {
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0;
+  text-align: center;
+  color: white;
+
+  margin-bottom: 24px;
+}
+.sp-ai-static-widget-connecting-spinner-container {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 16px;
+}
+.sp-ai-static-widget-connecting-spinner {
+  --spinner-size: 40px;
+  --spinner-color-1: rgba(4, 217, 79, 1);
+  --spinner-color-2: rgba(4, 217, 79, 0.6);
+  --spinner-color-3: rgba(4, 217, 79, 0.2);
+
+  position: relative;
+  border-radius: 50%;
+
+  width: var(--spinner-size);
+  height: var(--spinner-size);
+  animation: sp-ai-spin 2s linear infinite;
+  background: conic-gradient(
+    var(--spinner-color-1) 0deg,
+    var(--spinner-color-1) 120deg,
+    var(--spinner-color-2) 200deg,
+    var(--spinner-color-3) 280deg,
+    rgba(0, 0, 0, 0) 340deg
+  );
+  mask: radial-gradient(circle, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 1) 50%);
+  -webkit-mask: radial-gradient(
+    circle,
+    rgba(0, 0, 0, 0) 45%,
+    rgba(0, 0, 0, 1) 50%
+  );
+}
+
+.sp-ai-static-widget-label-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+
+  max-width: 100%;
+  flex-grow: 0;
+  flex-shrink: 0;
+  border-radius: 16px;
+
+  padding: 1px 12px;
+  /* margin-left: calc(2px - var(--spacing));
+  padding-left: calc(var(--spacing) - 2px); */
+  width: fit-content;
+  background: var(--spStaticWidgetTitleBg);
+  border: 1px solid #ffffff52;
+}
+.sp-ai-static-widget-label-container:not(:empty) {
+  margin-bottom: 4px;
+}
+.sp-ai-static-widget-label-container svg {
+  flex-shrink: 0;
+}
+
+.sp-ai-static-widget-label {
+  margin-left: 4px;
+  padding-left: 4px;
+  padding-right: 4px;
+
+  color: var(--spStaticWidgetButtonsTextButtonColor);
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 24px;
+  letter-spacing: 0;
+
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sp-ai-static-widget-description {
+  display: block;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+  text-shadow: 1px 1px black;
+}
+
+.sp-ai-static-widget-buttons-container {
+  overflow-y: auto;
+
+  padding-right: var(--spacing);
+
+  margin-top: auto;
+  margin-right: calc(var(--spacing) * -1);
+  margin-bottom: calc(var(--spacing) * 0.75);
+}
+
+.sp-ai-static-widget-buttons-container > .sp-ai-static-widget-fast-button {
+  opacity: 0;
+  transform: translateX(-30px);
+  animation: sp-ai-button-slide-in 0.5s ease-out forwards;
+}
+
+.sp-ai-static-widget-fast-button {
+  cursor: pointer;
+
+  color: var(--spColorsText);
+  background: #3d3d3d;
+
+  border-radius: 8px;
+  padding: 8px 0;
+
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 16px;
+  letter-spacing: 0;
+
+  width: 100%;
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+
+  border: 1px solid transparent;
+
+  transition: border 0.3s ease 0.1s;
+}
+.sp-ai-static-widget-fast-button-text {
+  display: inline-block;
+}
+.sp-ai-static-widget-fast-button > .sp-ai-static-widget-fast-button-text {
+  padding: 0 12px;
+}
+.sp-ai-static-widget-fast-button:hover {
+  border: 1px solid #8d99ff;
+}
+
+.sp-ai-static-widget-fast-button + .sp-ai-static-widget-fast-button {
+  margin-top: 8px;
+}
+
+.sp-ai-static-view .sp-ai-center-container {
+  --max-width: 150px;
+
+  color: var(--spStaticWidgetButtonsTextButtonColor);
+
+  display: flex;
+  flex-direction: column;
+  margin: 0 12px;
+}
+
+.sp-ai-static-view .sp-ai-greetings-container {
+  width: var(--max-width);
+  min-width: var(--max-width);
+  max-width: var(--max-width);
+
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 11px;
+  overflow: hidden;
+}
+.sp-ai-static-view .sp-ai-greetings-container span {
+  display: inline-block;
+  white-space: nowrap;
+  opacity: 0.8;
+}
+.sp-ai-static-view .sp-ai-greetings-container:hover span {
+  transition: opacity 0.3s ease;
+  opacity: 1;
+}
+.sp-ai-static-view .sp-ai-agent-title-container {
+  max-width: var(--max-width);
+
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 12px;
+
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sp-ai-static-view .sp-ai-static-widget-controls {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+}
+
+.sp-ai-static-widget-controls > .sp-ai-static-widget-control {
+  --main-color: var(--spStaticWidgetButtonsColor);
+
+  width: 24px;
+  height: 24px;
+  border-radius: 32px;
+  border-width: 1px;
+  opacity: 0.8;
+  border: 2px solid var(--main-color);
+  flex-shrink: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+
+  transition:
+    outline 0.2s ease,
+    opacity 0.2s ease;
+}
+.sp-ai-static-widget-controls > .sp-ai-static-widget-control:hover {
+  opacity: 1;
+  outline: 0.5px solid var(--main-color);
+}
+.sp-ai-static-widget-control.sp-ai-static-widget-control-white {
+  --main-color: var(--spStaticWidgetButtonsTextButtonColor);
+}
+
+.sp-ai-static-view .sp-ai-static-widget-connecting-container {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  heigh
