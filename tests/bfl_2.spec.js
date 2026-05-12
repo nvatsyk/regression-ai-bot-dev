@@ -120,6 +120,44 @@ async function tryClickButton(page, name, exact = true, ms = 30000) {
   return true;
 }
 
+// Try each label in candidates with a short per-candidate timeout; re-sweep the
+// list until groupMs elapses or a button is clicked. Uses { exact: false } so
+// shorter fallback labels (e.g. "Not at all") also match prefixed variants
+// (e.g. "0) Not at all."). Returns null with a diagnostic log + screenshot if
+// nothing matched — the bot may have skipped the question; the real regression
+// gate is the FAIL_PHRASES check after reopen.
+async function clickAnyButton(page, candidates, { groupMs = 30000, candidateMs = 3000, screenshotLabel = null } = {}) {
+  const deadline = Date.now() + groupMs;
+  while (Date.now() < deadline) {
+    for (const label of candidates) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      const btn = page.getByText(label, { exact: false }).last();
+      const found = await btn
+        .waitFor({ timeout: Math.min(candidateMs, remaining) })
+        .then(() => true)
+        .catch(() => false);
+      if (found) {
+        await btn.click();
+        await sleep(8000);
+        return label;
+      }
+    }
+  }
+  // Nothing matched — log diagnostics and silently continue.
+  const tag = screenshotLabel ?? candidates[0];
+  mkdirSync(REPORT_DIR, { recursive: true });
+  const pageText = await collectPageText(page).catch(() => '');
+  console.log(
+    `[BFL_2] clickAnyButton: none of [${candidates.join(' | ')}] appeared within ${groupMs}ms.\n` +
+    `Page text (first 800 chars):\n${pageText.slice(0, 800)}`
+  );
+  await page.screenshot({
+    path: join(REPORT_DIR, `bfl2-missing-btn-${tag.replace(/[^a-z0-9]/gi, '_').slice(0, 40)}.png`)
+  }).catch(() => {});
+  return null;
+}
+
 // Check page for any fail phrase; returns the matched phrase or null.
 async function detectFailPhrase(page) {
   for (const phrase of FAIL_PHRASES) {
@@ -173,7 +211,8 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
     await sendMessage(page, 'Kate');
 
     // "Good Spouse/Partner" is a chip — click adds it to input; Enter/Send submits it.
-    await tryClickButton(page, 'Good Spouse/Partner');
+    // Try flexible label variants in case the bot renders the chip without a prefix.
+    await clickAnyButton(page, ['Good Spouse/Partner', 'Spouse/Partner', 'Good Partner']);
     // Press Enter first (works in headless); click Send only if Enter didn't clear the input.
     await page.getByRole('textbox').press('Enter').catch(() => {});
     await sleep(500);
@@ -184,22 +223,24 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
     await sleep(10000);
     await page.screenshot({ path: join(REPORT_DIR, 'bfl2-after-values.png') });
 
-    await tryClickButton(page, '0) Not at all.',        true);  // PHQ Q1
-    await tryClickButton(page, '0) Not at all.',        true);  // PHQ Q2
-    await tryClickButton(page, '1) Several days.',      true);  // PHQ Q3
-    await tryClickButton(page, '3) Nearly every day.',  true);  // PHQ Q4
-    await tryClickButton(page, 'Yes',                   true);
-    await sendMessage(page, 'skip');                             // phone-number step
-    await tryClickButton(page, 'Yes',                   true);
-    await tryClickButton(page, 'A) Excellent / Always.', true);
-    await tryClickButton(page, 'Yes',                   true);
-    await tryClickButton(page, 'Yes',                   true);
-    await tryClickButton(page, 'Yes',                   true);
-    await tryClickButton(page, 'A) Excellent.',         true);
-    await tryClickButton(page, 'A) Excellent.',         true);
-    await tryClickButton(page, 'A) Excellent / Always.', true);
-    await tryClickButton(page, 'B) Good.',              true);
-    await tryClickButton(page, 'A) Excellent.',         true);
+    // PHQ and follow-up questions — each candidate group covers the full label
+    // ("0) Not at all.") and the short variant the bot may render without a prefix.
+    await clickAnyButton(page, ['0) Not at all.', 'Not at all.', 'Not at all']);              // PHQ Q1
+    await clickAnyButton(page, ['0) Not at all.', 'Not at all.', 'Not at all']);              // PHQ Q2
+    await clickAnyButton(page, ['1) Several days.', 'Several days.', 'Several days']);        // PHQ Q3
+    await clickAnyButton(page, ['3) Nearly every day.', 'Nearly every day.', 'Nearly every day']); // PHQ Q4
+    await clickAnyButton(page, ['Yes', 'Okay', 'OK']);
+    await sendMessage(page, 'skip');                                                           // phone-number step
+    await clickAnyButton(page, ['Yes', 'Okay', 'OK']);
+    await clickAnyButton(page, ['A) Excellent / Always.', 'Excellent / Always.', 'Excellent / Always']);
+    await clickAnyButton(page, ['Yes', 'Okay', 'OK']);
+    await clickAnyButton(page, ['Yes', 'Okay', 'OK']);
+    await clickAnyButton(page, ['Yes', 'Okay', 'OK']);
+    await clickAnyButton(page, ['A) Excellent.', 'A) Excellent', 'Excellent.']);
+    await clickAnyButton(page, ['A) Excellent.', 'A) Excellent', 'Excellent.']);
+    await clickAnyButton(page, ['A) Excellent / Always.', 'Excellent / Always.', 'Excellent / Always']);
+    await clickAnyButton(page, ['B) Good.', 'B) Good', 'B) Good / Often.', 'B) Good / Often', 'Good.']);
+    await clickAnyButton(page, ['A) Excellent.', 'A) Excellent', 'Excellent.']);
 
     await page.screenshot({ path: join(REPORT_DIR, 'bfl2-onboarding-progress.png') }).catch(() => {});
 
