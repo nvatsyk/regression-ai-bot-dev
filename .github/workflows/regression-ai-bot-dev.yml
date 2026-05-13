@@ -7,14 +7,14 @@ on:
     # 09:00 Kyiv time = 06:00 UTC
     - cron: '0 6 * * *'
 
-    # 09:30 Kyiv time = 06:30 UTC
-    - cron: '30 6 * * *'
+concurrency:
+  group: regression-ai-bot-tests
+  cancel-in-progress: false
 
 jobs:
-  bfl-2-regression:
-    if: ${{ github.event_name != 'schedule' || github.event.schedule == '0 6 * * *' }}
+  regression-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
@@ -24,17 +24,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright Browsers
-        run: |
-          chmod +x node_modules/.bin/playwright
-          npx playwright install --with-deps chromium
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
 
       - name: Run BFL_2 regression
         id: bfl2
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-bfl-2
         run: npx playwright test tests/bfl_2.spec.js --reporter=html
         continue-on-error: true
 
@@ -43,7 +50,22 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bfl-2-playwright-report
-          path: playwright-report/
+          path: playwright-report-bfl-2/
+          if-no-files-found: ignore
+
+      - name: Run Keyless English regression
+        id: keyless
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-keyless-english
+        run: npx playwright test tests/keyless-english_2.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Keyless English HTML report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: keyless-english-playwright-report
+          path: playwright-report-keyless-english/
           if-no-files-found: ignore
 
       - name: Slack BFL_2 PASS notification
@@ -54,16 +76,7 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "✅ BFL_2 regression passed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*✅ BFL_2 regression passed*\n\nBot correctly remembers completed onboarding after reopening Text Chat.\n\n*Test:* `tests/bfl_2.spec.js`\n*Status:* PASSED\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
+              "text": "✅ BFL_2 regression passed\nTest: tests/bfl_2.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       - name: Slack BFL_2 FAIL notification
@@ -74,56 +87,8 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "❌ BFL_2 regression failed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*❌ BFL_2 regression failed*\n\n*Bug:* Repeated onboarding detected after reopen.\n\nExpected behavior:\nBot should continue session and greet user normally.\n\n*Test:* `tests/bfl_2.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
+              "text": "❌ BFL_2 regression failed\nTest: tests/bfl_2.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
-
-      - name: Fail BFL_2 workflow if test failed
-        if: ${{ steps.bfl2.outcome == 'failure' }}
-        run: exit 1
-
-  keyless-english-regression:
-    if: ${{ github.event_name != 'schedule' || github.event.schedule == '30 6 * * *' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright Browsers
-        run: |
-          chmod +x node_modules/.bin/playwright
-          npx playwright install --with-deps chromium
-
-      - name: Run Keyless English regression
-        id: keyless
-        run: npx playwright test tests/keyless-english_2.spec.js --reporter=html
-        continue-on-error: true
-
-      - name: Upload Keyless English HTML report
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: keyless-english-playwright-report
-          path: playwright-report/
-          if-no-files-found: ignore
 
       - name: Slack Keyless PASS notification
         if: ${{ steps.keyless.outcome == 'success' }}
@@ -133,16 +98,7 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "✅ Keyless English regression passed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*✅ Keyless English regression passed*\n\nBot correctly identified unlock method and offered options (mobile app, passcode, RFID, access card).\n\n*Test:* `tests/keyless-english_2.spec.js`\n*Status:* PASSED\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
+              "text": "✅ Keyless English regression passed\nBot correctly identified unlock method and offered options.\nTest: tests/keyless-english_2.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       - name: Slack Keyless FAIL notification
@@ -153,18 +109,9 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "❌ Keyless English regression failed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*❌ Keyless English regression failed*\n\n*Flow:* Keyless unlock method check.\n\nExpected behavior:\nBot should ask how the user is trying to unlock and offer method options (mobile app, passcode, RFID, access card).\n\n*Test:* `tests/keyless-english_2.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
+              "text": "❌ Keyless English regression failed\nFlow: Keyless unlock method check.\nTest: tests/keyless-english_2.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
-      - name: Fail Keyless workflow if test failed
-        if: ${{ steps.keyless.outcome == 'failure' }}
+      - name: Fail workflow if any test failed
+        if: ${{ steps.bfl2.outcome == 'failure' || steps.keyless.outcome == 'failure' }}
         run: exit 1
