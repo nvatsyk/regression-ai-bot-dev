@@ -7,8 +7,12 @@ on:
     # 09:00 Kyiv time = 06:00 UTC
     - cron: '0 6 * * *'
 
+concurrency:
+  group: regression-ai-bot-tests
+  cancel-in-progress: false
+
 jobs:
-  regression:
+  regression-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -20,6 +24,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -28,18 +33,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ hashFiles('package-lock.json') }}
-          restore-keys: playwright-chromium-
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
-      - name: Install Playwright Browsers
-        run: |
-          chmod +x node_modules/.bin/playwright
-          npx playwright install chromium
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
 
       # ── BFL_2 ──────────────────────────────────────────────────────────────
 
       - name: Run BFL_2 regression
         id: bfl2
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-bfl-2
         run: npx playwright test tests/bfl_2.spec.js --reporter=html
         continue-on-error: true
 
@@ -48,7 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bfl-2-playwright-report
-          path: playwright-report/
+          path: playwright-report-bfl-2/
           if-no-files-found: ignore
 
       - name: Slack BFL_2 PASS notification
@@ -59,16 +63,7 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "✅ BFL_2 regression passed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*✅ BFL_2 regression passed*\n\nBot correctly remembers completed onboarding after reopening Text Chat.\n\n*Test:* `tests/bfl_2.spec.js`\n*Status:* PASSED\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
+              "text": "✅ BFL_2 regression passed\nTest: tests/bfl_2.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       - name: Slack BFL_2 FAIL notification
@@ -79,77 +74,54 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "❌ BFL_2 regression failed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*❌ BFL_2 regression failed*\n\n*Bug:* Repeated onboarding detected after reopen.\n\nExpected behavior:\nBot should continue session and greet user normally.\n\n*Test:* `tests/bfl_2.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
+              "text": "❌ BFL_2 regression failed\nTest: tests/bfl_2.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       # ── Keyless English ────────────────────────────────────────────────────
 
       - name: Run Keyless English regression
         id: keyless
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-keyless-english
         run: npx playwright test tests/keyless-english_2.spec.js --reporter=html
         continue-on-error: true
 
       - name: Upload Keyless English HTML report
-        if: always()
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: keyless-english-playwright-report
-          path: playwright-report/
+          path: playwright-report-keyless-english/
           if-no-files-found: ignore
 
       - name: Slack Keyless PASS notification
-        if: steps.keyless.outcome == 'success'
+        if: ${{ steps.keyless.outcome == 'success' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "✅ Keyless English regression passed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*✅ Keyless English regression passed*\n\nBot correctly identified unlock method and offered options (mobile app, passcode, RFID, access card).\n\n*Test:* `tests/keyless-english_2.spec.js`\n*Status:* PASSED\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
+              "text": "✅ Keyless English regression passed\nBot correctly identified unlock method and offered options.\nTest: tests/keyless-english_2.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       - name: Slack Keyless FAIL notification
-        if: steps.keyless.outcome == 'failure'
+        if: ${{ steps.keyless.outcome == 'failure' }}
         uses: slackapi/slack-github-action@v2.0.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "❌ Keyless English regression failed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*❌ Keyless English regression failed*\n\n*Flow:* Keyless unlock method check.\n\nExpected behavior:\nBot should ask how the user is trying to unlock and offer method options (mobile app, passcode, RFID, access card).\n\n*Test:* `tests/keyless-english_2.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
+              "text": "❌ Keyless English regression failed\nFlow: Keyless unlock method check.\nTest: tests/keyless-english_2.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       # ── Chronilogix BDR ───────────────────────────────────────────────────
 
       - name: Run Chronilogix BDR regression
         id: chron
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-chronilogix-bdr
         run: npx playwright test tests/chronilogix-bdr.spec.js --reporter=html
         continue-on-error: true
 
@@ -158,7 +130,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: chronilogix-bdr-playwright-report
-          path: playwright-report/
+          path: playwright-report-chronilogix-bdr/
           if-no-files-found: ignore
 
       - name: Slack Chronilogix BDR PASS notification
@@ -169,16 +141,7 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "✅ Chronilogix BDR regression passed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*✅ Chronilogix BDR regression passed*\n\nBot correctly handled mental health personal support flow.\n\n*Test:* `tests/chronilogix-bdr.spec.js`\n*Status:* PASSED\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
+              "text": "✅ Chronilogix BDR regression passed\nBot correctly handled mental health personal support flow.\nTest: tests/chronilogix-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       - name: Slack Chronilogix BDR FAIL notification
@@ -189,25 +152,11 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "❌ Chronilogix BDR regression failed",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*❌ Chronilogix BDR regression failed*\n\n*Flow:* Mental health personal support flow.\n\nExpected behavior:\nBot should greet as Roni (Chronilogix AI), acknowledge user name, and accept mental health + personal support inputs.\n\n*Test:* `tests/chronilogix-bdr.spec.js`\n\nGitHub Run:\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  }
-                }
-              ]
+              "text": "❌ Chronilogix BDR regression failed\nFlow: Mental health personal support flow.\nTest: tests/chronilogix-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
-        if: always()
-        run: |
-          if [ "${{ steps.bfl2.outcome }}" = "failure" ] || \
-             [ "${{ steps.keyless.outcome }}" = "failure" ] || \
-             [ "${{ steps.chron.outcome }}" = "failure" ]; then
-            exit 1
-          fi
+        if: ${{ steps.bfl2.outcome == 'failure' || steps.keyless.outcome == 'failure' || steps.chron.outcome == 'failure' }}
+        run: exit 1
