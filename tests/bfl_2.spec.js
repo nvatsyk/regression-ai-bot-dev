@@ -128,7 +128,13 @@ async function tryClickButton(page, name, exact = true, ms = 30000) {
 //      works in headed mode and some headless environments.
 //   2. page.evaluate JS traversal + dispatchEvent — headless fallback that walks
 //      every open shadow root and fires a full mousedown/mouseup/click sequence.
-async function clickAnyButton(page, candidates, { groupMs = 30000, candidateMs = 3000, screenshotLabel = null } = {}) {
+async function clickAnyButton(page, candidates, { groupMs = 20000, candidateMs = 3000, screenshotLabel = null, textFallback = null, stepId = null, answeredSteps = null } = {}) {
+  // Single-answer lock: skip entirely if this step was already answered.
+  if (stepId && answeredSteps && answeredSteps.has(stepId)) {
+    console.log(`[BFL_2] clickAnyButton: step "${stepId}" already answered — skipping duplicate`);
+    return null;
+  }
+
   const deadline = Date.now() + groupMs;
 
   while (Date.now() < deadline) {
@@ -145,6 +151,10 @@ async function clickAnyButton(page, candidates, { groupMs = 30000, candidateMs =
         const clicked = await btn.click({ force: true }).then(() => true).catch(() => false);
         if (!clicked) await btn.dispatchEvent('click').catch(() => {});
         await sleep(8000);
+        if (stepId && answeredSteps) {
+          answeredSteps.add(stepId);
+          console.log(`[BFL_2] clickAnyButton: step "${stepId}" answered via button click — "${label}"`);
+        }
         return label;
       }
     }
@@ -191,14 +201,17 @@ async function clickAnyButton(page, candidates, { groupMs = 30000, candidateMs =
 
     if (jsClicked) {
       await sleep(8000);
+      if (stepId && answeredSteps) {
+        answeredSteps.add(stepId);
+        console.log(`[BFL_2] clickAnyButton: step "${stepId}" answered via JS click — "${jsClicked}"`);
+      }
       return jsClicked + ' (js)';
     }
 
     await sleep(1500);
   }
 
-  // Nothing matched — log diagnostics and silently continue.
-  // The real regression gate is the FAIL_PHRASES check after reopen.
+  // Nothing matched via click strategies — log diagnostics.
   const tag = screenshotLabel ?? candidates[0];
   mkdirSync(REPORT_DIR, { recursive: true });
   const pageText = await collectPageText(page).catch(() => '');
@@ -209,6 +222,18 @@ async function clickAnyButton(page, candidates, { groupMs = 30000, candidateMs =
   await page.screenshot({
     path: join(REPORT_DIR, `bfl2-missing-btn-${tag.replace(/[^a-z0-9]/gi, '_').slice(0, 40)}.png`),
   }).catch(() => {});
+
+  // Text fallback: send the answer as a typed message (headless-safe).
+  if (textFallback !== null) {
+    console.log(`[BFL_2] text-fallback: sending "${textFallback}" for step "${stepId ?? 'unknown'}"`);
+    await sendMessage(page, textFallback);
+    if (stepId && answeredSteps) {
+      answeredSteps.add(stepId);
+      console.log(`[BFL_2] clickAnyButton: step "${stepId}" answered via text-fallback — "${textFallback}"`);
+    }
+    return textFallback + ' (text-fallback)';
+  }
+
   return null;
 }
 
@@ -227,6 +252,9 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
     const testName = 'BFL_2 onboarding persistence after 2 minutes';
 
     mkdirSync(REPORT_DIR, { recursive: true });
+
+    // Tracks which onboarding steps have already been answered to prevent double-submission.
+    const answeredSteps = new Set();
 
     // ── Step 1: Open bot URL ──────────────────────────────────────────────────
     await page.goto(BOT_URL);
@@ -299,7 +327,7 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
 
     // "Good Spouse/Partner" is a chip — click adds it to input; Enter/Send submits it.
     // Try flexible label variants in case the bot renders the chip without a prefix.
-    await clickAnyButton(page, ['Good Spouse/Partner', 'Spouse/Partner', 'Good Partner']);
+    await clickAnyButton(page, ['Good Spouse/Partner', 'Spouse/Partner', 'Good Partner'], { textFallback: 'Good Spouse/Partner', stepId: 'values', answeredSteps });
     // Press Enter first (works in headless); click Send only if Enter didn't clear the input.
     await page.getByRole('textbox').press('Enter').catch(() => {});
     await sleep(500);
@@ -310,24 +338,25 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
     await sleep(10000);
     await page.screenshot({ path: join(REPORT_DIR, 'bfl2-after-values.png') });
 
-    // PHQ and follow-up questions — each candidate group covers the full label
-    // ("0) Not at all.") and the short variant the bot may render without a prefix.
-    await clickAnyButton(page, ['0) Not at all.', 'Not at all.', 'Not at all']);              // PHQ Q1
-    await clickAnyButton(page, ['0) Not at all.', 'Not at all.', 'Not at all']);              // PHQ Q2
-    await clickAnyButton(page, ['1) Several days.', 'Several days.', 'Several days']);        // PHQ Q3
-    await clickAnyButton(page, ['3) Nearly every day.', 'Nearly every day.', 'Nearly every day']); // PHQ Q4
-    await clickAnyButton(page, ['Yes', 'Okay', 'OK']);
-    await sendMessage(page, 'skip');                                                           // phone-number step
-    await clickAnyButton(page, ['Yes', 'Okay', 'OK']);
-    await clickAnyButton(page, ['A) Excellent / Always.', 'Excellent / Always.', 'Excellent / Always']);
-    await clickAnyButton(page, ['Yes', 'Okay', 'OK']);
-    await clickAnyButton(page, ['Yes', 'Okay', 'OK']);
-    await clickAnyButton(page, ['Yes', 'Okay', 'OK']);
-    await clickAnyButton(page, ['A) Excellent.', 'A) Excellent', 'Excellent.']);
-    await clickAnyButton(page, ['A) Excellent.', 'A) Excellent', 'Excellent.']);
-    await clickAnyButton(page, ['A) Excellent / Always.', 'Excellent / Always.', 'Excellent / Always']);
-    await clickAnyButton(page, ['B) Good.', 'B) Good', 'B) Good / Often.', 'B) Good / Often', 'Good.']);
-    await clickAnyButton(page, ['A) Excellent.', 'A) Excellent', 'Excellent.']);
+    // PHQ and follow-up questions. textFallback sends the answer as typed text
+    // when chip buttons are unreachable (e.g. in headless Chromium).
+    // Each stepId is unique — the answeredSteps lock prevents double-submission.
+    await clickAnyButton(page, ['0) Not at all.', 'Not at all.', 'Not at all'], { textFallback: 'Not at all', stepId: 'phq1', answeredSteps });
+    await clickAnyButton(page, ['0) Not at all.', 'Not at all.', 'Not at all'], { textFallback: 'Not at all', stepId: 'phq2', answeredSteps });
+    await clickAnyButton(page, ['1) Several days.', 'Several days.', 'Several days'], { textFallback: 'Several days', stepId: 'phq3', answeredSteps });
+    await clickAnyButton(page, ['3) Nearly every day.', 'Nearly every day.', 'Nearly every day'], { textFallback: 'Nearly every day', stepId: 'phq4', answeredSteps });
+    await clickAnyButton(page, ['Yes', 'Okay', 'OK'], { textFallback: 'Yes', stepId: 'confirm1', answeredSteps });
+    await sendMessage(page, 'skip');                                                                                      // phone-number step
+    await clickAnyButton(page, ['Yes', 'Okay', 'OK'], { textFallback: 'Yes', stepId: 'confirm2', answeredSteps });
+    await clickAnyButton(page, ['A) Excellent / Always.', 'Excellent / Always.', 'Excellent / Always'], { textFallback: 'Excellent / Always', stepId: 'wellness1', answeredSteps });
+    await clickAnyButton(page, ['Yes', 'Okay', 'OK'], { textFallback: 'Yes', stepId: 'confirm3', answeredSteps });
+    await clickAnyButton(page, ['Yes', 'Okay', 'OK'], { textFallback: 'Yes', stepId: 'confirm4', answeredSteps });
+    await clickAnyButton(page, ['Yes', 'Okay', 'OK'], { textFallback: 'Yes', stepId: 'confirm5', answeredSteps });
+    await clickAnyButton(page, ['A) Excellent.', 'A) Excellent', 'Excellent.'], { textFallback: 'Excellent', stepId: 'wellness2', answeredSteps });
+    await clickAnyButton(page, ['A) Excellent.', 'A) Excellent', 'Excellent.'], { textFallback: 'Excellent', stepId: 'wellness3', answeredSteps });
+    await clickAnyButton(page, ['A) Excellent / Always.', 'Excellent / Always.', 'Excellent / Always'], { textFallback: 'Excellent / Always', stepId: 'wellness4', answeredSteps });
+    await clickAnyButton(page, ['B) Good.', 'B) Good', 'B) Good / Often.', 'B) Good / Often', 'Good.'], { textFallback: 'Good', stepId: 'wellness5', answeredSteps });
+    await clickAnyButton(page, ['A) Excellent.', 'A) Excellent', 'Excellent.'], { textFallback: 'Excellent', stepId: 'wellness6', answeredSteps });
 
     await page.screenshot({ path: join(REPORT_DIR, 'bfl2-onboarding-progress.png') }).catch(() => {});
 
