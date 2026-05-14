@@ -1,0 +1,162 @@
+name: Regression AI Bot Tests 09:15
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # 09:15 Kyiv time = 06:15 UTC
+    - cron: '15 6 * * *'
+
+concurrency:
+  group: regression-ai-bot-tests-0915
+  cancel-in-progress: false
+
+jobs:
+  regression-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      # ── Famatechnologies BDR ──────────────────────────────────────────────
+
+      - name: Run Famatechnologies BDR regression
+        id: fama
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-famatechnologies-bdr
+        run: npx playwright test tests/famatechnologies-bdr.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Famatechnologies BDR HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: famatechnologies-bdr-playwright-report
+          path: playwright-report-famatechnologies-bdr/
+          if-no-files-found: ignore
+
+      - name: Slack Famatechnologies BDR PASS notification
+        if: steps.fama.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Famatechnologies BDR regression passed\nBot correctly captured name and requested phone number.\nTest: tests/famatechnologies-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Famatechnologies BDR FAIL notification
+        if: steps.fama.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Famatechnologies BDR regression failed\nFlow: Name capture and phone number request.\nTest: tests/famatechnologies-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      # ── Solix BDR ─────────────────────────────────────────────────────────
+
+      - name: Run Solix BDR regression
+        id: solix
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-solix-bdr
+        run: npx playwright test tests/solix-bdr.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Solix BDR HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: solix-bdr-playwright-report
+          path: playwright-report-solix-bdr/
+          if-no-files-found: ignore
+
+      - name: Slack Solix BDR PASS notification
+        if: steps.solix.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Solix BDR regression passed\nBot correctly captured name and introduced Solix services.\nTest: tests/solix-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Solix BDR FAIL notification
+        if: steps.solix.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Solix BDR regression failed\nFlow: Name capture and Solix intro.\nTest: tests/solix-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      # ── Chronilogix BDR Simple ────────────────────────────────────────────
+
+      - name: Run Chronilogix BDR simple regression
+        id: chron_simple
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-chronilogix-bdr-simple
+        run: npx playwright test tests/chronilogix-bdr-simple.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Chronilogix BDR simple HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronilogix-bdr-simple-playwright-report
+          path: playwright-report-chronilogix-bdr-simple/
+          if-no-files-found: ignore
+
+      - name: Slack Chronilogix BDR simple PASS notification
+        if: steps.chron_simple.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Chronilogix BDR simple regression passed\nBot correctly handled greeting and name acknowledgement flow.\nTest: tests/chronilogix-bdr-simple.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Chronilogix BDR simple FAIL notification
+        if: steps.chron_simple.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Chronilogix BDR simple regression failed\nFlow: Greeting and name acknowledgement.\nTest: tests/chronilogix-bdr-simple.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      # ── Fail workflow if any test failed ──────────────────────────────────
+
+      - name: Fail workflow if any test failed
+        if: ${{ steps.fama.outcome == 'failure' || steps.solix.outcome == 'failure' || steps.chron_simple.outcome == 'failure' }}
+        run: exit 1
