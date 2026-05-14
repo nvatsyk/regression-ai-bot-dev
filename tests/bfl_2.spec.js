@@ -121,14 +121,18 @@ async function tryClickButton(page, name, exact = true, ms = 30000) {
 }
 
 // Try each label in candidates with a short per-candidate timeout; re-sweep the
-// list until groupMs elapses or a button is clicked. Uses { exact: false } so
-// shorter fallback labels (e.g. "Not at all") also match prefixed variants
-// (e.g. "0) Not at all."). Returns null with a diagnostic log + screenshot if
-// nothing matched — the bot may have skipped the question; the real regression
-// gate is the FAIL_PHRASES check after reopen.
+// list until groupMs elapses or a button is clicked.
+//
+// Two strategies are tried on every sweep:
+//   1. getByText + force:true click — Playwright locator that pierces shadow DOM;
+//      works in headed mode and some headless environments.
+//   2. page.evaluate JS traversal + dispatchEvent — headless fallback that walks
+//      every open shadow root and fires a full mousedown/mouseup/click sequence.
 async function clickAnyButton(page, candidates, { groupMs = 30000, candidateMs = 3000, screenshotLabel = null } = {}) {
   const deadline = Date.now() + groupMs;
+
   while (Date.now() < deadline) {
+    // ── Strategy 1: Playwright getByText (reliable in headed mode) ────────────
     for (const label of candidates) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) break;
@@ -138,13 +142,63 @@ async function clickAnyButton(page, candidates, { groupMs = 30000, candidateMs =
         .then(() => true)
         .catch(() => false);
       if (found) {
-        await btn.click();
+        const clicked = await btn.click({ force: true }).then(() => true).catch(() => false);
+        if (!clicked) await btn.dispatchEvent('click').catch(() => {});
         await sleep(8000);
         return label;
       }
     }
+
+    // ── Strategy 2: JS shadow-DOM traversal + dispatchEvent (headless fallback) ──
+    // Walks every open shadow root recursively; dispatches a full mouse-event
+    // sequence so widgets that listen for mousedown/up/click all respond.
+    const jsClicked = await page.evaluate((labels) => {
+      function walk(root) {
+        for (const el of Array.from(root.querySelectorAll('*'))) {
+          if (el.shadowRoot) {
+            const r = walk(el.shadowRoot);
+            if (r) return r;
+          }
+          const tag  = (el.tagName  || '').toUpperCase();
+          const role = el.getAttribute?.('role') || '';
+          const cls  = String(el.className || '');
+          const isBtn =
+            tag === 'BUTTON' ||
+            role === 'button' ||
+            /chip|btn|option|choice|pill|answer/i.test(cls);
+          if (!isBtn) continue;
+          const text = (el.innerText || el.textContent || '').trim();
+          if (!text) continue;
+          const norm = s => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+          const t = norm(text);
+          if (!t) continue; // skip icon-only buttons (×, ›, ✕) whose text normalises to ""
+          for (const label of labels) {
+            const l = norm(label);
+            if (!l) continue;
+            // require t.length >= 2 for l.includes(t) to prevent single-char false-positives
+            if (t === l || t.includes(l) || (t.length >= 2 && l.includes(t))) {
+              for (const type of ['mousedown', 'mouseup', 'click']) {
+                el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+              }
+              return label;
+            }
+          }
+        }
+        return null;
+      }
+      return walk(document.body);
+    }, candidates).catch(() => null);
+
+    if (jsClicked) {
+      await sleep(8000);
+      return jsClicked + ' (js)';
+    }
+
+    await sleep(1500);
   }
+
   // Nothing matched — log diagnostics and silently continue.
+  // The real regression gate is the FAIL_PHRASES check after reopen.
   const tag = screenshotLabel ?? candidates[0];
   mkdirSync(REPORT_DIR, { recursive: true });
   const pageText = await collectPageText(page).catch(() => '');
@@ -153,7 +207,7 @@ async function clickAnyButton(page, candidates, { groupMs = 30000, candidateMs =
     `Page text (first 800 chars):\n${pageText.slice(0, 800)}`
   );
   await page.screenshot({
-    path: join(REPORT_DIR, `bfl2-missing-btn-${tag.replace(/[^a-z0-9]/gi, '_').slice(0, 40)}.png`)
+    path: join(REPORT_DIR, `bfl2-missing-btn-${tag.replace(/[^a-z0-9]/gi, '_').slice(0, 40)}.png`),
   }).catch(() => {});
   return null;
 }
@@ -168,8 +222,8 @@ async function detectFailPhrase(page) {
 
 test.describe('BFL - Onboarding Persistence Regression', () => {
   test('BFL_2 onboarding persistence after 2 minutes', async ({ page, context }) => {
-    // 13 min: onboarding (~5 min) + 2 min sleep + reopen + CI buffer
-    test.setTimeout(780000);
+    // 15 min: onboarding (~5 min) + 2 min sleep + reopen + CI buffer
+    test.setTimeout(900000);
     const testName = 'BFL_2 onboarding persistence after 2 minutes';
 
     mkdirSync(REPORT_DIR, { recursive: true });
@@ -195,13 +249,46 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
     // ── Step 2: Click Text Chat ───────────────────────────────────────────────
     await page.getByText('Text Chat').first().click();
 
-    // ── Step 3: Wait for greeting from Zenn ──────────────────────────────────
-    // Wait for the chat input to appear, then give the greeting time to render.
+    // ── Step 3: Wait for and validate Zenn opening greeting ──────────────────
+    // STRICT ORDER: the bot must send exactly ONE greeting before any user message.
+    // Fail immediately on missing or duplicate greeting — both signal broken session logic.
     const input = page.getByRole('textbox');
     await input.waitFor({ timeout: 15000 });
-    await sleep(6000);
 
-    // ── Step 4: Send "good" ───────────────────────────────────────────────────
+    // 3a) Greeting must arrive before we send anything.
+    const greetingLocator = page.getByText(/how are you feeling today/i);
+    const greetingArrived = await greetingLocator.first().waitFor({ timeout: 60000 }).then(() => true).catch(() => false);
+    await page.screenshot({ path: join(REPORT_DIR, 'bfl2-zenn-greeting.png') }).catch(() => {});
+
+    if (!greetingArrived) {
+      await page.screenshot({ path: join(REPORT_DIR, 'bfl2-zenn-greeting-fail.png') }).catch(() => {});
+      logFailure(
+        testName, BUG_TITLE,
+        'Zenn greeting missing before first user message',
+        await collectPageText(page).catch(() => ''),
+      );
+    }
+    expect(
+      greetingArrived,
+      'Step 3a: Zenn greeting ("Hi, this is Zenn...How are you feeling today?") must appear before any user message is sent',
+    ).toBe(true);
+
+    // 3b) Exactly ONE occurrence of the greeting — duplicates indicate broken session state.
+    const greetingCount = await greetingLocator.count().catch(() => 0);
+    if (greetingCount !== 1) {
+      await page.screenshot({ path: join(REPORT_DIR, 'bfl2-duplicate-greeting-fail.png') }).catch(() => {});
+      logFailure(
+        testName, BUG_TITLE,
+        `Expected exactly 1 Zenn greeting, found ${greetingCount}`,
+        await collectPageText(page).catch(() => ''),
+      );
+    }
+    expect(
+      greetingCount,
+      `Step 3b: Expected exactly 1 Zenn greeting before user responds, found ${greetingCount}. Duplicate or missing greeting indicates broken session logic.`,
+    ).toBe(1);
+
+    // ── Step 4: Send "good" — only ONE response, only after greeting confirmed ─
     await sendMessage(page, 'good');
 
     // ── Step 5 / 6: Send "start" after onboarding instruction ────────────────
