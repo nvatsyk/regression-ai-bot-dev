@@ -1,0 +1,84 @@
+name: Smoke AI Tests
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # 09:00 Kyiv time = 06:00 UTC
+    - cron: '0 6 * * *'
+
+concurrency:
+  group: smoke-ai-tests
+  cancel-in-progress: false
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      # ── Royal Commission ───────────────────────────────────────────────────
+
+      - name: Run Royal Commission smoke test
+        id: royal_commission
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-royal-commission
+        run: npx playwright test tests/royal-commission.spec.js --reporter=html --workers=1
+        continue-on-error: true
+
+      - name: Upload Royal Commission HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: royal-commission-playwright-report
+          path: playwright-report-royal-commission/
+          if-no-files-found: ignore
+
+      - name: Slack Royal Commission PASS notification
+        if: steps.royal_commission.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Royal Commission smoke test passed\nBot correctly handled greeting, Hello, and services flow.\nTest: tests/royal-commission.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Royal Commission FAIL notification
+        if: steps.royal_commission.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Royal Commission smoke test failed\nFlow: greeting → Hello → services.\nTest: tests/royal-commission.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      # ── Fail workflow if any test failed ──────────────────────────────────
+
+      - name: Fail workflow if any test failed
+        if: steps.royal_commission.outcome == 'failure'
+        run: exit 1
