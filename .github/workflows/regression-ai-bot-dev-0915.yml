@@ -38,6 +38,45 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install chromium
 
+      # ── Chronilogix BDR Simple ────────────────────────────────────────────
+
+      - name: Run Chronilogix BDR simple regression
+        id: chron_simple
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-chronilogix-bdr-simple
+        run: npx playwright test tests/chronilogix-bdr-simple.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Chronilogix BDR simple HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronilogix-bdr-simple-playwright-report
+          path: playwright-report-chronilogix-bdr-simple/
+          if-no-files-found: ignore
+
+      - name: Slack Chronilogix BDR simple PASS notification
+        if: steps.chron_simple.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Chronilogix BDR simple regression passed\nBot correctly handled greeting and name acknowledgement flow.\nTest: tests/chronilogix-bdr-simple.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Chronilogix BDR simple FAIL notification
+        if: steps.chron_simple.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Chronilogix BDR simple regression failed\nFlow: Greeting and name acknowledgement.\nTest: tests/chronilogix-bdr-simple.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
       # ── Famatechnologies BDR ──────────────────────────────────────────────
 
       - name: Run Famatechnologies BDR regression
@@ -116,47 +155,91 @@ jobs:
               "text": "❌ Solix BDR regression failed\nFlow: Name capture and Solix intro.\nTest: tests/solix-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
-      # ── Chronilogix BDR Simple ────────────────────────────────────────────
+      # ── SPsoft BDR ────────────────────────────────────────────────────────
 
-      - name: Run Chronilogix BDR simple regression
-        id: chron_simple
+      - name: Run SPsoft BDR regression
+        id: spsoft
         env:
-          PLAYWRIGHT_HTML_REPORT: playwright-report-chronilogix-bdr-simple
-        run: npx playwright test tests/chronilogix-bdr-simple.spec.js --reporter=html
+          PLAYWRIGHT_HTML_REPORT: playwright-report-spsoft-bdr
+        run: npx playwright test tests/spsoft-bdr.spec.js --reporter=html
         continue-on-error: true
 
-      - name: Upload Chronilogix BDR simple HTML report
+      - name: Upload SPsoft BDR HTML report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: chronilogix-bdr-simple-playwright-report
-          path: playwright-report-chronilogix-bdr-simple/
+          name: spsoft-bdr-playwright-report
+          path: playwright-report-spsoft-bdr/
           if-no-files-found: ignore
 
-      - name: Slack Chronilogix BDR simple PASS notification
-        if: steps.chron_simple.outcome == 'success'
+      - name: Slack SPsoft BDR PASS notification
+        if: steps.spsoft.outcome == 'success'
         uses: slackapi/slack-github-action@v2.0.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "✅ Chronilogix BDR simple regression passed\nBot correctly handled greeting and name acknowledgement flow.\nTest: tests/chronilogix-bdr-simple.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              "text": "✅ SPsoft BDR regression passed\nBot correctly greeted, captured name, and listed services.\nTest: tests/spsoft-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
-      - name: Slack Chronilogix BDR simple FAIL notification
-        if: steps.chron_simple.outcome == 'failure'
+      - name: Slack SPsoft BDR FAIL notification
+        if: steps.spsoft.outcome == 'failure'
         uses: slackapi/slack-github-action@v2.0.0
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "❌ Chronilogix BDR simple regression failed\nFlow: Greeting and name acknowledgement.\nTest: tests/chronilogix-bdr-simple.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              "text": "❌ SPsoft BDR regression failed\nFlow: Greeting, name capture, and services list.\nTest: tests/spsoft-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      # ── Nextlevel.ai BDR ──────────────────────────────────────────────────
+
+      - name: Run Nextlevel.ai BDR regression
+        id: nlai
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-nextlevel-ai-bdr
+        run: npx playwright test tests/nextlevel-ai-bdr.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Nextlevel.ai BDR HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextlevel-ai-bdr-playwright-report
+          path: playwright-report-nextlevel-ai-bdr/
+          if-no-files-found: ignore
+
+      - name: Slack Nextlevel.ai BDR PASS notification
+        if: steps.nlai.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Nextlevel.ai BDR regression passed\nBot correctly handled greeting, name, phone skip, and email capture.\nTest: tests/nextlevel-ai-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Nextlevel.ai BDR FAIL notification
+        if: steps.nlai.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Nextlevel.ai BDR regression failed\nFlow: Greeting, name capture, phone skip, email capture.\nTest: tests/nextlevel-ai-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
-        if: ${{ steps.fama.outcome == 'failure' || steps.solix.outcome == 'failure' || steps.chron_simple.outcome == 'failure' }}
+        if: >
+          steps.chron_simple.outcome == 'failure' ||
+          steps.fama.outcome == 'failure' ||
+          steps.solix.outcome == 'failure' ||
+          steps.spsoft.outcome == 'failure' ||
+          steps.nlai.outcome == 'failure'
         run: exit 1

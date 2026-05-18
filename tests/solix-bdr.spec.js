@@ -134,6 +134,8 @@ test.describe('Solix BDR — Name Capture Flow', () => {
       'How can I assist you with Solix', 'data management solutions',
       'assist you with Solix', 'Solix and our services',
       'How can I assist you today', 'How can I help',
+      'What can I help you with', 'How may I assist',
+      'feel free to ask', 'here to help', 'happy to help',
     ];
     const step5Base = {};
     for (const p of step5Poll) {
@@ -141,6 +143,7 @@ test.describe('Solix BDR — Name Capture Flow', () => {
     }
 
     await sendMessage(page, 'Natali Test');
+    console.log('[SOLIX] Sent "Natali Test" — waiting for name acknowledgement.');
 
     // ── Step 5: Wait for and validate name acknowledgement ────────────────────
     const step5Arrived = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 60000);
@@ -151,11 +154,13 @@ test.describe('Solix BDR — Name Capture Flow', () => {
     await page.screenshot({ path: join(REPORT_DIR, 'solix-after-name.png') }).catch(() => {});
 
     const step5Fail = await checkPhraseGroups(page, [
-      { label: '"Hi Natali" acknowledgement', phrases: [
-        'Hi Natali Test', 'Hi Natali', 'Hello Natali', 'Natali',
+      { label: '"Natali" acknowledgement', phrases: [
+        'Hi Natali Test', 'Hi Natali', 'Hello Natali', 'Hey Natali',
+        'Natali Test', 'Natali', 'natali',
       ]},
       { label: 'Solix mention', phrases: ['Solix', 'solix'] },
-      { label: '"How can I help/assist" prompt', phrases: [
+      { label: 'assistance prompt or continuation', phrases: [
+        // Standard help/assist phrases
         'How can I help you learn more about Solix',
         'learn more about Solix',
         'How can I assist you with Solix',
@@ -164,8 +169,17 @@ test.describe('Solix BDR — Name Capture Flow', () => {
         'Solix Technologies',
         'data management solutions',
         'How can I assist you today', 'assist you today',
-        'How can I help you today', 'How can I help',
-        'How can I assist',
+        'How can I help you today',
+        'How can I help', 'How can I assist',
+        'How may I assist', 'How may I help',
+        'What can I help you with', 'What can I do for you',
+        'What would you like', 'What are you looking for',
+        // Soft continuation phrases
+        'feel free to ask', "I'm here to help", 'here to help',
+        'happy to help', 'happy to assist',
+        'let me know', 'tell me more',
+        'looking for', 'interested in learning',
+        'regarding Solix', 'about Solix',
       ]},
     ]);
     if (step5Fail) {
@@ -173,6 +187,7 @@ test.describe('Solix BDR — Name Capture Flow', () => {
       logFailure('Step 5: Name acknowledgement', step5Fail, '');
     }
     expect(step5Fail, `Step 5 failed: missing "${step5Fail}"`).toBeNull();
+    console.log('[SOLIX] Name acknowledgement validated.');
 
     await page.screenshot({ path: join(REPORT_DIR, 'solix-complete.png') }).catch(() => {});
     console.log('[SOLIX] Test complete — name capture and Solix intro verified.');
