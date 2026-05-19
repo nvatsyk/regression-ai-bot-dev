@@ -77,8 +77,47 @@ jobs:
               "text": "❌ Royal Commission smoke test failed\nFlow: greeting → Hello → services.\nTest: tests/royal-commission.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
+      # ── Etihad ChatBot ─────────────────────────────────────────────────────
+
+      - name: Run Etihad ChatBot smoke test
+        id: etihad_chatbot
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-etihad-chatbot
+        run: npx playwright test tests/etihad-chatbot.spec.js --reporter=html --workers=1
+        continue-on-error: true
+
+      - name: Upload Etihad ChatBot HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: etihad-chatbot-playwright-report
+          path: playwright-report-etihad-chatbot/
+          if-no-files-found: ignore
+
+      - name: Slack Etihad ChatBot PASS notification
+        if: steps.etihad_chatbot.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Etihad ChatBot smoke test passed\nBot correctly handled greeting, Hello, and services flow.\nTest: tests/etihad-chatbot.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Etihad ChatBot FAIL notification
+        if: steps.etihad_chatbot.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Etihad ChatBot smoke test failed\nFlow: greeting → Hello → services.\nTest: tests/etihad-chatbot.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
-        if: steps.royal_commission.outcome == 'failure'
+        if: steps.royal_commission.outcome == 'failure' || steps.etihad_chatbot.outcome == 'failure'
         run: exit 1
