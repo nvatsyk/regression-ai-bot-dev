@@ -1,0 +1,49 @@
+[
+  {
+    "id": "cs_001",
+    "description": "User asks about available skincare products",
+    "messages": [
+      "Switch to English",
+      "What skincare products do you offer?"
+    ],
+    "expected": [
+      "skin",
+      "product",
+      "serum",
+      "cream",
+      "moistur"
+    ]
+  },
+  {
+    "id": "cs_002",
+    "description": "User asks about store locations",
+    "messages": [
+      "Switch to English",
+      "Where are your stores located?"
+    ],
+    "expected": [
+      "store",
+      "location",
+      "branch",
+      "visit",
+      "Dubai",
+      "UAE"
+    ]
+  },
+  {
+    "id": "cs_003",
+    "description": "User asks about current promotions or discounts",
+    "messages": [
+      "Switch to English",
+      "Do you have any ongoing offers or discounts?"
+    ],
+    "expected": [
+      "offer",
+      "discount",
+      "promotion",
+      "deal",
+      "sale",
+      "%"
+    ]
+  }
+]

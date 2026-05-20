@@ -1,0 +1,56 @@
+[
+  {
+    "id": "dialog_001",
+    "description": "User asks about pricing plans and gets a clear answer",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hi! Can you tell me about your pricing plans?"
+      },
+      {
+        "role": "bot",
+        "content": "Hi there! We offer several flexible pricing plans to suit different needs. Our Starter plan is great for individuals, the Pro plan is popular with small teams, and we also have an Enterprise option with custom pricing. Would you like more details about any specific plan?"
+      },
+      {
+        "role": "user",
+        "content": "What's included in the Pro plan?"
+      },
+      {
+        "role": "bot",
+        "content": "The Pro plan includes unlimited conversations, priority support, advanced analytics, and integrations with popular CRM and helpdesk tools. It's billed monthly or annually — annual billing saves you 20%. Would you like to start a free trial?"
+      }
+    ],
+    "assertions": {
+      "botMentionsPricing": true,
+      "botOffersNextStep": true,
+      "expectedKeywords": ["plan", "pro", "support", "trial"]
+    }
+  },
+  {
+    "id": "dialog_002",
+    "description": "User reports a technical issue and bot provides troubleshooting steps",
+    "messages": [
+      {
+        "role": "user",
+        "content": "The chat widget is not showing up on my website after I installed the script."
+      },
+      {
+        "role": "bot",
+        "content": "I'm sorry to hear that! Let's troubleshoot this together. First, could you confirm that the script tag was placed just before the closing </body> tag on your page?"
+      },
+      {
+        "role": "user",
+        "content": "Yes, I placed it there but it still doesn't appear."
+      },
+      {
+        "role": "bot",
+        "content": "Thanks for confirming. A few things to check: make sure there are no JavaScript errors in your browser console that could be blocking the script, verify that your domain is whitelisted in your NextLevel dashboard under Settings → Allowed Domains, and try a hard refresh (Ctrl+Shift+R). If the issue persists, please share your website URL and I'll escalate this to our support team."
+      }
+    ],
+    "assertions": {
+      "botAcknowledgesIssue": true,
+      "botProvidesSteps": true,
+      "expectedKeywords": ["console", "domain", "settings", "support"]
+    }
+  }
+]

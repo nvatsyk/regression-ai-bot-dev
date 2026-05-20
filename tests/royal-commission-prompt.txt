@@ -1,0 +1,40 @@
+Create a new Playwright regression test for a new bot.
+Bot name:
+[KSA](Najdi) Royal Commission Q&A [Billingual]
+URL:
+https://demo.nextlevel.ai/std/#config=G74AOORyTmV70SWWHX5GaAtEOjlg_62oAivArC0gT9PJ7fBDQumlZXauPSOzbYJPlZzGm9GaDWUWIb3RJW2GjG9x2DAdB6FYvttQmUDkrG_86chwzcqtCHfEgXWww1uI4TMBdw2hhuwp2RuQIS7-3w3WvuOfT2KI8uG8KcYNHB0IFst6qupSkuBxlOiIHqWZsklZqiuKmmQJVnO0Ag
+Test file name:
+tests/royal-commission.spec.js
+Flow:
+1. Open bot URL
+2. Click "Text Chat" button
+3. Validate bot greeting contains:
+"هلا والله، معاك أحمد من الهيئة الملكية للجبيل وينبع. وش تبي تعرف عن لائحة الجزاءات أو المخالفات؟"
+4. User sends:
+Hello
+5. Validate bot response contains:
+"Hello"
+"how can I help you today with the Royal Commission for Jubail & Yanbu?"
+6. User sends:
+tell me about your services
+7. Validate bot response contains:
+"Royal Commission for Jubail & Yanbu"
+"municipal violations and penalties"
+If all validations pass → test PASSED.
+Requirements:
+
+Use stable Playwright waits
+Add screenshots on failure
+Add clear console logs
+Run with --workers=1 compatibility
+Use same structure/style as other BDR tests
+Make the test headless-safe for GitHub Actions
+After creating:
+
+Run headed once
+Run headless once
+Fix any flaky issues if needed
+IMPORTANT:
+
+Do NOT commit
+Do NOT push to GitHub
