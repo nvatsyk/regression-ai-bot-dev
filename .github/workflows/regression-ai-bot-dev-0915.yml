@@ -233,6 +233,45 @@ jobs:
               "text": "❌ Nextlevel.ai BDR regression failed\nFlow: Greeting, name capture, phone skip, email capture.\nTest: tests/nextlevel-ai-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
+      # ── Merkel LTD ───────────────────────────────────────────────────────
+
+      - name: Run Merkel LTD regression
+        id: merkel
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-merkel-ltd
+        run: npx playwright test tests/merkel-ltd.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Merkel LTD HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merkel-ltd-playwright-report
+          path: playwright-report-merkel-ltd/
+          if-no-files-found: ignore
+
+      - name: Slack Merkel LTD PASS notification
+        if: steps.merkel.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Merkel LTD regression passed\nBot correctly handled Boardroom greeting and cafe Q&A flow.\nTest: tests/merkel-ltd.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Merkel LTD FAIL notification
+        if: steps.merkel.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Merkel LTD regression failed\nFlow: Boardroom greeting and cafe Q&A.\nTest: tests/merkel-ltd.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
@@ -241,5 +280,6 @@ jobs:
           steps.fama.outcome == 'failure' ||
           steps.solix.outcome == 'failure' ||
           steps.spsoft.outcome == 'failure' ||
-          steps.nlai.outcome == 'failure'
+          steps.nlai.outcome == 'failure' ||
+          steps.merkel.outcome == 'failure'
         run: exit 1
