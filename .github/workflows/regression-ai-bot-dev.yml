@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
 
   schedule:
-    # 09:00 Kyiv time = 06:00 UTC
-    - cron: '0 6 * * *'
+    # 06:00 Kyiv time = 03:00 UTC
+    - cron: '0 3 * * *'
 
 concurrency:
   group: regression-ai-bot-tests
