@@ -1,0 +1,162 @@
+name: Smoke AI Tests
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    # 09:00 Kyiv time = 06:00 UTC
+    - cron: '0 6 * * *'
+
+concurrency:
+  group: smoke-ai-tests
+  cancel-in-progress: false
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      # ── Royal Commission ───────────────────────────────────────────────────
+
+      - name: Run Royal Commission smoke test
+        id: royal_commission
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-royal-commission
+        run: npx playwright test tests/royal-commission.spec.js --reporter=html --workers=1
+        continue-on-error: true
+
+      - name: Upload Royal Commission HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: royal-commission-playwright-report
+          path: playwright-report-royal-commission/
+          if-no-files-found: ignore
+
+      - name: Slack Royal Commission PASS notification
+        if: steps.royal_commission.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Royal Commission smoke test passed\nBot correctly handled greeting, Hello, and services flow.\nTest: tests/royal-commission.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Royal Commission FAIL notification
+        if: steps.royal_commission.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Royal Commission smoke test failed\nFlow: greeting → Hello → services.\nTest: tests/royal-commission.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      # ── Etihad ChatBot ─────────────────────────────────────────────────────
+
+      - name: Run Etihad ChatBot smoke test
+        id: etihad_chatbot
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-etihad-chatbot
+        run: npx playwright test tests/etihad-chatbot.spec.js --reporter=html --workers=1
+        continue-on-error: true
+
+      - name: Upload Etihad ChatBot HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: etihad-chatbot-playwright-report
+          path: playwright-report-etihad-chatbot/
+          if-no-files-found: ignore
+
+      - name: Slack Etihad ChatBot PASS notification
+        if: steps.etihad_chatbot.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Etihad ChatBot smoke test passed\nBot correctly handled greeting, Hello, and services flow.\nTest: tests/etihad-chatbot.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Etihad ChatBot FAIL notification
+        if: steps.etihad_chatbot.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Etihad ChatBot smoke test failed\nFlow: greeting → Hello → services.\nTest: tests/etihad-chatbot.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      # ── Heck Agency Assistant ──────────────────────────────────────────────
+
+      - name: Run Heck Agency Assistant smoke test
+        id: heck_assistant
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-heck-assistant
+        run: npx playwright test tests/heck-assistant.spec.js --reporter=html --workers=1
+        continue-on-error: true
+
+      - name: Upload Heck Agency Assistant HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heck-assistant-playwright-report
+          path: playwright-report-heck-assistant/
+          if-no-files-found: ignore
+
+      - name: Slack Heck Agency Assistant PASS notification
+        if: steps.heck_assistant.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Heck Agency Assistant smoke test passed\nBot correctly handled greeting, Yes, and services flow.\nTest: tests/heck-assistant.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Heck Agency Assistant FAIL notification
+        if: steps.heck_assistant.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Heck Agency Assistant smoke test failed\nFlow: greeting → Yes → services.\nTest: tests/heck-assistant.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      # ── Fail workflow if any test failed ──────────────────────────────────
+
+      - name: Fail workflow if any test failed
+        if: steps.royal_commission.outcome == 'failure' || steps.etihad_chatbot.outcome == 'failure' || steps.heck_assistant.outcome == 'failure'
+        run: exit 1
