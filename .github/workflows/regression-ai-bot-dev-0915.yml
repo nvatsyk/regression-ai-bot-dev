@@ -272,6 +272,45 @@ jobs:
               "text": "❌ Merkel LTD regression failed\nFlow: Boardroom greeting and cafe Q&A.\nTest: tests/merkel-ltd.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
+      # ── JAKDelivery ──────────────────────────────────────────────────────────
+
+      - name: Run JAKDelivery regression
+        id: jak
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-jak-delivery
+        run: npx playwright test tests/jak-delivery.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload JAKDelivery HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jak-delivery-playwright-report
+          path: playwright-report-jak-delivery/
+          if-no-files-found: ignore
+
+      - name: Slack JAKDelivery PASS notification
+        if: steps.jak.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ JAKDelivery regression passed\nBot correctly opened, greeted, and responded to services inquiry.\nTest: tests/jak-delivery.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack JAKDelivery FAIL notification
+        if: steps.jak.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ JAKDelivery regression failed\nFlow: Bot greeting and services response.\nTest: tests/jak-delivery.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
@@ -281,5 +320,6 @@ jobs:
           steps.solix.outcome == 'failure' ||
           steps.spsoft.outcome == 'failure' ||
           steps.nlai.outcome == 'failure' ||
-          steps.merkel.outcome == 'failure'
+          steps.merkel.outcome == 'failure' ||
+          steps.jak.outcome == 'failure'
         run: exit 1
