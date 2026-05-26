@@ -86,8 +86,12 @@ test.describe('Heck Agency Assistant — Regression', () => {
 
     // ── Step 3: Validate greeting ──────────────────────────────────────────────
     const greetingFail = await checkPhraseGroups(page, [
-      { label: '"Hey, is this Bob?"', phrases: [
-        'Hey, is this Bob?', 'is this Bob', 'Hey,',
+      { label: 'Greeting (Bob or John Smith)', phrases: [
+        // Original greeting variants
+        'Hey, is this Bob?', 'is this Bob',
+        // Updated greeting variants
+        'am i speaking with John Smith', 'speaking with John Smith', 'John Smith',
+        'Hi, am i speaking',
       ]},
     ]);
     if (greetingFail) {
@@ -100,6 +104,7 @@ test.describe('Heck Agency Assistant — Regression', () => {
     // ── Step 4: Send "Yes" ─────────────────────────────────────────────────────
     const step5Phrases = [
       'Hey Bob, this is Jessica',
+      'this is Jessica',
       'Jessica over at Heck Insurance',
       'Heck Insurance',
       'Jessica',
@@ -119,8 +124,9 @@ test.describe('Heck Agency Assistant — Regression', () => {
     await page.screenshot({ path: join(REPORT_DIR, 'heck-after-yes.png') }).catch(() => {});
 
     const step5Fail = await checkPhraseGroups(page, [
-      { label: '"Hey Bob, this is Jessica over at Heck Insurance"', phrases: [
+      { label: '"this is Jessica over at Heck Insurance"', phrases: [
         'Hey Bob, this is Jessica',
+        'this is Jessica',
         'Jessica over at Heck Insurance',
         'Heck Insurance',
         'Jessica',
