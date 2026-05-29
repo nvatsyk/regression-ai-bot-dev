@@ -85,13 +85,14 @@ test.describe('Heck Agency Assistant — Regression', () => {
     await page.screenshot({ path: join(REPORT_DIR, 'heck-greeting.png') }).catch(() => {});
 
     // ── Step 3: Validate greeting ──────────────────────────────────────────────
+    // The bot rotates prospect names (Bob, John Smith, Steve Miller, …) but the
+    // opening pattern is always "Hey, is this [Name]?" or "Hi, am i speaking with [Name]?"
     const greetingFail = await checkPhraseGroups(page, [
-      { label: 'Greeting (Bob or John Smith)', phrases: [
-        // Original greeting variants
-        'Hey, is this Bob?', 'is this Bob',
-        // Updated greeting variants
-        'am i speaking with John Smith', 'speaking with John Smith', 'John Smith',
+      { label: 'Greeting opener', phrases: [
+        'Hey, is this',
+        'is this',
         'Hi, am i speaking',
+        'am i speaking with',
       ]},
     ]);
     if (greetingFail) {
