@@ -149,6 +149,10 @@ test.describe('Heck Agency Assistant — Regression', () => {
       'insurance help',
       'looking around',
       'Heck Insurance',
+      'explain the call purpose',
+      'quick policy review',
+      'licensed Heck Insurance specialist',
+      'policy review',
     ];
     const step7Base = {};
     for (const p of step7Phrases) {
@@ -176,6 +180,11 @@ test.describe('Heck Agency Assistant — Regression', () => {
         'licensed agent',
         'insurance options',
         'can only assist you in English',
+        'explain the call purpose',
+        'quick policy review',
+        'licensed Heck Insurance specialist',
+        'policy review',
+        'Heck Insurance specialist',
       ]},
     ]);
     if (step7Fail) {
