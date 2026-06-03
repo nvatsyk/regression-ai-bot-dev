@@ -39,7 +39,6 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-// Polls until the occurrence count of phrase INCREASES beyond beforeCount.
 async function waitForNewOccurrence(page, phrase, beforeCount, timeoutMs = 40000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -47,11 +46,10 @@ async function waitForNewOccurrence(page, phrase, beforeCount, timeoutMs = 40000
     if (count > beforeCount) return true;
     await sleep(2000);
   }
-  console.log(`[CHRON] waitForNewOccurrence: "${phrase}" did not appear within ${timeoutMs}ms`);
+  console.log(`[CHRON-S] waitForNewOccurrence: "${phrase}" did not appear within ${timeoutMs}ms`);
   return false;
 }
 
-// Polls until any phrase in the list has more occurrences than its baseline count.
 async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -64,7 +62,6 @@ async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 600
   return false;
 }
 
-// Returns the label of the first phrase group with NO match on the page, or null if all pass.
 async function checkPhraseGroups(page, phraseGroups) {
   for (const g of phraseGroups) {
     let matched = false;
@@ -77,7 +74,7 @@ async function checkPhraseGroups(page, phraseGroups) {
   return null;
 }
 
-test.describe('Chronilogix BDR — Mental Health Personal Support Flow', () => {
+test.describe('Chronilogix BDR — Mental Health Personal Support Flow (Simple)', () => {
   test(TEST_NAME, async ({ page }) => {
     test.setTimeout(180000); // 3 min: greeting + 3 bot responses + CI headroom
 
@@ -85,9 +82,10 @@ test.describe('Chronilogix BDR — Mental Health Personal Support Flow', () => {
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
     await page.goto(BOT_URL);
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-startup.png') }).catch(() => {});
+    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-startup.png') }).catch(() => {});
 
     // ── Step 2: Open chat ────────────────────────────────────────────────────
+    // Try multiple chat-launch button labels; log visible buttons if none match.
     const CHAT_LABELS = ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", 'Let’s Chat'];
     let chatBtn = null;
     for (const lbl of CHAT_LABELS) {
@@ -100,21 +98,19 @@ test.describe('Chronilogix BDR — Mental Health Personal Support Flow', () => {
         Array.from(document.querySelectorAll('button,[role="button"]'))
           .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
       ).catch(() => []);
-      console.log('[CHRON] Chat button not found. Visible buttons:', vis);
-      await page.screenshot({ path: join(REPORT_DIR, 'chron-open-btn-not-found.png') }).catch(() => {});
-      throw new Error(`[CHRON] Chat button not found. Tried: ${CHAT_LABELS.join(', ')}. Visible: ${vis.join(', ')}`);
+      console.log('[CHRON-S] Chat button not found. Visible buttons:', vis);
+      await page.screenshot({ path: join(REPORT_DIR, 'chron-s-open-btn-not-found.png') }).catch(() => {});
+      throw new Error(`[CHRON-S] Chat button not found. Tried: ${CHAT_LABELS.join(', ')}. Visible: ${vis.join(', ')}`);
     }
     await chatBtn.click();
 
     // ── Step 3: Wait for and validate greeting ────────────────────────────────
-    // Poll for greeting message body using a phrase unique to the message,
-    // not the widget header ("Roni AI"). beforeCount=0 so the first appearance counts.
     const greetingArrived = await waitForNewOccurrence(page, 'your name', 0, 60000);
     if (!greetingArrived) {
-      console.log('[CHRON] Greeting poll timed out — asserting anyway');
+      console.log('[CHRON-S] Greeting poll timed out — asserting anyway');
     }
     await sleep(1000);
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-greeting.png') }).catch(() => {});
+    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-greeting.png') }).catch(() => {});
 
     const greetingFail = await checkPhraseGroups(page, [
       { label: 'Chronilogix mention', phrases: [
@@ -127,13 +123,12 @@ test.describe('Chronilogix BDR — Mental Health Personal Support Flow', () => {
       ]},
     ]);
     if (greetingFail) {
-      await page.screenshot({ path: join(REPORT_DIR, 'chron-greeting-fail.png') }).catch(() => {});
+      await page.screenshot({ path: join(REPORT_DIR, 'chron-s-greeting-fail.png') }).catch(() => {});
       logFailure('Step 3: Greeting', greetingFail, '');
     }
     expect(greetingFail, `Step 3 greeting missing: "${greetingFail}"`).toBeNull();
 
     // ── Step 4: Send "Natali" ─────────────────────────────────────────────────
-    // Snapshot baselines before send so we can detect the bot's new reply.
     const step5Poll = [
       'Great to meet you', 'great to meet', 'Nice to meet', 'nice to meet',
       'What can I help you with regarding Chronilogix', 'help you with regarding',
@@ -149,10 +144,10 @@ test.describe('Chronilogix BDR — Mental Health Personal Support Flow', () => {
     // ── Step 5: Wait for name acknowledgement ────────────────────────────────
     const step5Arrived = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 60000);
     if (!step5Arrived) {
-      console.log('[CHRON] Step 5 response did not arrive within 60s — asserting anyway');
+      console.log('[CHRON-S] Step 5 response did not arrive within 60s — asserting anyway');
     }
     await sleep(1000);
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-after-name.png') }).catch(() => {});
+    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-after-name.png') }).catch(() => {});
 
     const step5Fail = await checkPhraseGroups(page, [
       { label: '"Great to meet you" acknowledgement', phrases: [
@@ -167,18 +162,18 @@ test.describe('Chronilogix BDR — Mental Health Personal Support Flow', () => {
       ]},
     ]);
     if (step5Fail) {
-      await page.screenshot({ path: join(REPORT_DIR, 'chron-step5-fail.png') }).catch(() => {});
+      await page.screenshot({ path: join(REPORT_DIR, 'chron-s-step5-fail.png') }).catch(() => {});
       logFailure('Step 5: Name acknowledgement', step5Fail, '');
     }
     expect(step5Fail, `Step 5 failed: missing "${step5Fail}"`).toBeNull();
 
-    // ── Step 6: Send "Mental Health" — test passes after this send ───────────
+    // ── Step 6: Send "Mental Health" ─────────────────────────────────────────
     await sendMessage(page, 'Mental Health');
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-after-mental-health.png') }).catch(() => {});
+    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-after-mental-health.png') }).catch(() => {});
 
-    // ── Step 7: Send "Myself" — test passes after this send ──────────────────
+    // ── Step 7: Send "Myself" ─────────────────────────────────────────────────
     await sendMessage(page, 'Myself');
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-complete.png') }).catch(() => {});
-    console.log('[CHRON] Test complete — "Myself" sent successfully.');
+    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-complete.png') }).catch(() => {});
+    console.log('[CHRON-S] Test complete — "Myself" sent successfully.');
   });
 });

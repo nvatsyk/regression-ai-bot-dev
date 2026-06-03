@@ -88,14 +88,24 @@ test.describe('Keyless English — Greeting and Unlock Reply Flow', () => {
     await page.goto(BOT_URL);
     await page.screenshot({ path: join(REPORT_DIR, 'ke2-startup.png') }).catch(() => {});
 
-    // ── Step 2: Click "Text Chat" ─────────────────────────────────────────────
-    let chatBtn = page.getByRole('button', { name: /text chat/i });
-    const foundByRole = await chatBtn.waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
-    if (!foundByRole) {
-      chatBtn = page.getByText('Text Chat', { exact: false }).first();
-      await chatBtn.waitFor({ timeout: 30000 });
+    // ── Step 2: Open chat ─────────────────────────────────────────────────────
+    const CHAT_LABELS = ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", 'Let’s Chat'];
+    let chatBtn = null;
+    for (const lbl of CHAT_LABELS) {
+      const btn = page.getByText(lbl, { exact: false }).first();
+      const found = await btn.waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+      if (found) { chatBtn = btn; break; }
     }
-    console.log('[KE2] Found "Text Chat" button — clicking.');
+    if (!chatBtn) {
+      const vis = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('button,[role="button"]'))
+          .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
+      ).catch(() => []);
+      console.log('[KE2] Chat button not found. Visible buttons:', vis);
+      await page.screenshot({ path: join(REPORT_DIR, 'ke2-open-btn-not-found.png') }).catch(() => {});
+      throw new Error(`[KE2] Chat button not found. Tried: ${CHAT_LABELS.join(', ')}. Visible: ${vis.join(', ')}`);
+    }
+    console.log('[KE2] Found chat button — clicking.');
     await chatBtn.click();
 
     // ── Step 3: Wait for and validate greeting ────────────────────────────────

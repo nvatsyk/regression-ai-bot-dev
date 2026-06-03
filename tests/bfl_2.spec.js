@@ -259,23 +259,57 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
     // ── Step 1: Open bot URL ──────────────────────────────────────────────────
     await page.goto(BOT_URL);
 
-    await page.waitForFunction(
-      () => {
-        function findText(root, needle) {
-          for (const node of root.querySelectorAll('*')) {
-            if (node.shadowRoot && findText(node.shadowRoot, needle)) return true;
-            if (node.textContent && node.textContent.trim() === needle) return true;
+    // Short timeout so waitForFunction cannot block for the full 15-min test timeout.
+    // Falls through to the multi-label locator fallback if the widget is slow/renamed.
+    const CHAT_LABELS = ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", 'Let’s Chat'];
+    let widgetReady = false;
+    try {
+      await page.waitForFunction(
+        () => {
+          function findText(root, needle) {
+            for (const node of root.querySelectorAll('*')) {
+              if (node.shadowRoot && findText(node.shadowRoot, needle)) return true;
+              if (node.textContent && node.textContent.trim() === needle) return true;
+            }
+            return false;
           }
-          return false;
-        }
-        return findText(document, 'Text Chat');
-      },
-      { timeout: 60000 }
-    );
+          return findText(document, 'Text Chat');
+        },
+        { timeout: 30000 }
+      );
+      widgetReady = true;
+    } catch {
+      // timed out — try direct locators below
+    }
+    if (!widgetReady) {
+      for (const lbl of CHAT_LABELS) {
+        const btn = page.getByText(lbl, { exact: false }).first();
+        const found = await btn.waitFor({ timeout: 8000 }).then(() => true).catch(() => false);
+        if (found) { widgetReady = true; break; }
+      }
+    }
+    if (!widgetReady) {
+      const vis = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('button,[role="button"]'))
+          .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
+      ).catch(() => []);
+      console.log('[BFL_2] Widget not found after navigation. Visible buttons:', vis);
+      await page.screenshot({ path: join(REPORT_DIR, 'bfl2-widget-not-found.png') }).catch(() => {});
+      throw new Error(`[BFL_2] Chat widget not found. Tried: ${CHAT_LABELS.join(', ')}. Visible: ${vis.join(', ')}`);
+    }
     await page.screenshot({ path: join(REPORT_DIR, 'bfl2-startup.png') });
 
     // ── Step 2: Click Text Chat ───────────────────────────────────────────────
-    await page.getByText('Text Chat').first().click();
+    let chatOpened = false;
+    for (const lbl of CHAT_LABELS) {
+      const btn = page.getByText(lbl, { exact: false }).first();
+      const found = await btn.waitFor({ timeout: 8000 }).then(() => true).catch(() => false);
+      if (found) { await btn.click(); chatOpened = true; break; }
+    }
+    if (!chatOpened) {
+      await page.screenshot({ path: join(REPORT_DIR, 'bfl2-open-btn-not-found.png') }).catch(() => {});
+      throw new Error('[BFL_2] Could not find any chat-launch button to click');
+    }
 
     // ── Step 3: Wait for and validate Zenn opening greeting ──────────────────
     // STRICT ORDER: the bot must send exactly ONE greeting before any user message.
@@ -419,23 +453,58 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
     if (page.isClosed()) {
       activePage = await context.newPage();
       await activePage.goto(BOT_URL);
-      await activePage.waitForFunction(
-        () => {
-          function findText(root, needle) {
-            for (const node of root.querySelectorAll('*')) {
-              if (node.shadowRoot && findText(node.shadowRoot, needle)) return true;
-              if (node.textContent && node.textContent.trim() === needle) return true;
+      let widgetReady2 = false;
+      try {
+        await activePage.waitForFunction(
+          () => {
+            function findText(root, needle) {
+              for (const node of root.querySelectorAll('*')) {
+                if (node.shadowRoot && findText(node.shadowRoot, needle)) return true;
+                if (node.textContent && node.textContent.trim() === needle) return true;
+              }
+              return false;
             }
-            return false;
-          }
-          return findText(document, 'Text Chat');
-        },
-        { timeout: 60000 }
-      );
+            return findText(document, 'Text Chat');
+          },
+          { timeout: 30000 }
+        );
+        widgetReady2 = true;
+      } catch {
+        // timed out — try multi-label fallback
+      }
+      if (!widgetReady2) {
+        for (const lbl of CHAT_LABELS) {
+          const btn = activePage.getByText(lbl, { exact: false }).first();
+          const found = await btn.waitFor({ timeout: 8000 }).then(() => true).catch(() => false);
+          if (found) { widgetReady2 = true; break; }
+        }
+      }
+      if (!widgetReady2) {
+        const vis = await activePage.evaluate(() =>
+          Array.from(document.querySelectorAll('button,[role="button"]'))
+            .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
+        ).catch(() => []);
+        console.log('[BFL_2] Reopen widget not found. Visible buttons:', vis);
+        await activePage.screenshot({ path: join(REPORT_DIR, 'bfl2-reopen-widget-not-found.png') }).catch(() => {});
+        throw new Error(`[BFL_2] Reopen: chat widget not found. Visible: ${vis.join(', ')}`);
+      }
     }
 
-    const textChatBtn = activePage.getByText('Text Chat').first();
-    await textChatBtn.waitFor({ timeout: 60000 });
+    let textChatBtn = null;
+    for (const lbl of CHAT_LABELS) {
+      const btn = activePage.getByText(lbl, { exact: false }).first();
+      const found = await btn.waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+      if (found) { textChatBtn = btn; break; }
+    }
+    if (!textChatBtn) {
+      const vis = await activePage.evaluate(() =>
+        Array.from(document.querySelectorAll('button,[role="button"]'))
+          .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
+      ).catch(() => []);
+      console.log('[BFL_2] Reopen: chat button not found. Visible buttons:', vis);
+      await activePage.screenshot({ path: join(REPORT_DIR, 'bfl2-reopen-btn-not-found.png') }).catch(() => {});
+      throw new Error(`[BFL_2] Reopen: chat button not found. Visible: ${vis.join(', ')}`);
+    }
     const textBeforeReopen = await collectPageText(activePage).catch(() => '');
     await textChatBtn.click();
 

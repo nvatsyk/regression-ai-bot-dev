@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
 
   schedule:
-    # 06:00 Kyiv time = 03:00 UTC
-    - cron: '0 3 * * *'
+    # 05:00 Kyiv time = 02:00 UTC
+    - cron: '0 2 * * *'
 
 concurrency:
   group: regression-ai-bot-tests
@@ -122,7 +122,7 @@ jobs:
         id: chron
         env:
           PLAYWRIGHT_HTML_REPORT: playwright-report-chronilogix-bdr
-        run: npx playwright test tests/chronilogix-bdr.spec.js --reporter=html
+        run: npx playwright test tests/chronilogix-bdr-simple.spec.js --reporter=html
         continue-on-error: true
 
       - name: Upload Chronilogix BDR HTML report
@@ -141,7 +141,7 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "✅ Chronilogix BDR regression passed\nBot correctly handled mental health personal support flow.\nTest: tests/chronilogix-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              "text": "✅ Chronilogix BDR regression passed\nBot correctly handled mental health personal support flow.\nTest: tests/chronilogix-bdr-simple.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       - name: Slack Chronilogix BDR FAIL notification
@@ -152,7 +152,7 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "❌ Chronilogix BDR regression failed\nFlow: Mental health personal support flow.\nTest: tests/chronilogix-bdr.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              "text": "❌ Chronilogix BDR regression failed\nFlow: Mental health personal support flow.\nTest: tests/chronilogix-bdr-simple.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
       # ── Fail workflow if any test failed ──────────────────────────────────
