@@ -143,12 +143,11 @@ test.describe('Vodafone Cook Islands — Moana AI — Regression', () => {
 
     // ── Step 6: Send "tell me about your services" ─────────────────────────────
     const step7Phrases = [
-      "don't have information on that topic",
-      'visit our website',
-      'please visit our website',
-      'Is there another question',
-      'I can help you with',
-      'another question I can help',
+      'mobile, internet, WiFi',
+      'business connectivity',
+      'E-Moni Mobile Wallet',
+      'Travel SIMs',
+      'What service would you like to know more about',
     ];
     const step7Base = {};
     for (const p of step7Phrases) {
@@ -166,16 +165,13 @@ test.describe('Vodafone Cook Islands — Moana AI — Regression', () => {
     await page.screenshot({ path: join(REPORT_DIR, 'vodafone-after-services.png') }).catch(() => {});
 
     const step7Fail = await checkPhraseGroups(page, [
-      { label: 'step 7 services response', phrases: [
-        "don't have information on that topic",
-        'visit our website',
-        'please visit our website',
-        'Is there another question',
-        'I can help you with',
-        'another question I can help',
-        'mobile plan',
-        'internet',
-        'Top Up',
+      { label: '"mobile, internet, WiFi, and business connectivity" mention', phrases: [
+        'mobile, internet, WiFi', 'business connectivity',
+      ]},
+      { label: '"E-Moni Mobile Wallet" mention', phrases: ['E-Moni Mobile Wallet', 'E-Moni'] },
+      { label: '"Travel SIMs" mention', phrases: ['Travel SIMs', 'eSIMs'] },
+      { label: '"What service would you like to know more about" closing question', phrases: [
+        'What service would you like to know more about',
       ]},
     ]);
     if (step7Fail) {
