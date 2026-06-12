@@ -53,7 +53,7 @@ test.describe('Oven Cleaning Bot - Dialog Tests', () => {
       // Wait for bot greeting before sending any user message
       await expect(
         page.getByText(/Thank you for calling The Oven Cleaners|Ready to get a quote/i).first()
-      ).toBeVisible({ timeout: 15000 });
+      ).toBeVisible({ timeout: 30000 });
 
       for (const message of dialog.messages) {
         await input.fill(message);

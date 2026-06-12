@@ -66,7 +66,7 @@ test.describe('Cosme Surge Bot - Dialog Tests', () => {
         await send(page, input, messages.shift());
         await expect(
           page.getByText(/I understand|Hi there|Dana|CosmeSurge/i).first()
-        ).toBeVisible({ timeout: 35000 });
+        ).toBeVisible({ timeout: 30000 });
       }
 
       // Send remaining dialog messages

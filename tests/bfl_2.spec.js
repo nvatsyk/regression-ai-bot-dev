@@ -367,7 +367,7 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
     await sleep(500);
     const chipValue = (await page.getByRole('textbox').inputValue().catch(() => '')).trim();
     if (chipValue) {
-      await page.getByRole('button').last().click({ timeout: 10000 }).catch(() => {});
+      await page.getByRole('button').last().click({ timeout: 30000 }).catch(() => {});
     }
     await sleep(10000);
     await page.screenshot({ path: join(REPORT_DIR, 'bfl2-after-values.png') });
