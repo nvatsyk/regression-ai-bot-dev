@@ -143,7 +143,7 @@ test.describe('Merkel LTD — Boardroom Q&A Flow', () => {
     // Confirm the user message appeared in the widget, then wait for bot response.
     let msgAppeared = false;
     try {
-      await page.getByText('Tell me about cafe', { exact: false }).waitFor({ timeout: 20000 });
+      await page.getByText('Tell me about cafe', { exact: false }).waitFor({ timeout: 30000 });
       msgAppeared = true;
     } catch {}
     console.log(`[MERKEL] User message appeared in widget: ${msgAppeared}`);

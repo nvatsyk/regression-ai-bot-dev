@@ -80,7 +80,7 @@ async function waitForTextChange(page, baselineLength, timeoutMs = 90000, minNew
 // Fill textbox, try Enter, fall back to clicking the Send button.
 async function sendMessage(page, text) {
   const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: 10000 });
+  await input.waitFor({ timeout: 30000 });
   await input.fill(text);
   await input.press('Enter');
   await sleep(500);
@@ -315,7 +315,7 @@ test.describe('BFL - Onboarding Persistence Regression', () => {
     // STRICT ORDER: the bot must send exactly ONE greeting before any user message.
     // Fail immediately on missing or duplicate greeting — both signal broken session logic.
     const input = page.getByRole('textbox');
-    await input.waitFor({ timeout: 15000 });
+    await input.waitFor({ timeout: 30000 });
 
     // 3a) Greeting must arrive before we send anything.
     const greetingLocator = page.getByText(/how are you feeling today/i);

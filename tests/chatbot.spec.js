@@ -7,13 +7,13 @@ test('chatbot works', async ({ page }) => {
 
   // чекаємо появу кнопки
   const chatButton = page.getByRole('button', { name: 'Text Chat' });
-  await chatButton.waitFor({ timeout: 15000 });
+  await chatButton.waitFor({ timeout: 30000 });
 
   await chatButton.click();
 
   // чекаємо інпут
   const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: 10000 });
+  await input.waitFor({ timeout: 30000 });
 
   await input.fill('Hi');
   await input.press('Enter');

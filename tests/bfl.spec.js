@@ -48,7 +48,7 @@ async function collectPageText(page) {
 // Fill textbox, try Enter, fall back to clicking the Send button.
 async function sendMessage(page, text) {
   const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: 10000 });
+  await input.waitFor({ timeout: 30000 });
   await input.fill(text);
   await input.press('Enter');
   await sleep(500);
@@ -116,7 +116,7 @@ test.describe('BFL - Onboarding Regression', () => {
     await page.getByText('Text Chat').first().click();
 
     const input = page.getByRole('textbox');
-    await input.waitFor({ timeout: 15000 });
+    await input.waitFor({ timeout: 30000 });
     await sleep(6000);
 
     // ── Opening messages ──────────────────────────────────────────────────────

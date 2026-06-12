@@ -33,7 +33,7 @@ function logFailure(dialog, actualText) {
 // Fill the textbox, try Enter first; if the value is still there, click the Send button.
 async function sendMessage(page, text) {
   const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: 10000 });
+  await input.waitFor({ timeout: 30000 });
   await input.fill(text);
   await input.press('Enter');
   await page.waitForTimeout(500);

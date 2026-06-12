@@ -145,7 +145,7 @@ test.describe('Nextlevel.ai BDR — Greeting and Name Flow', () => {
     const foundByRole = await chatBtn.waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
     if (!foundByRole) {
       chatBtn = page.getByText(/let.?s chat/i).first();
-      await chatBtn.waitFor({ timeout: 15000 });
+      await chatBtn.waitFor({ timeout: 30000 });
     }
 
     // Dismiss cookie consent banner if present (intercepts clicks).

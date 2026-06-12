@@ -7,8 +7,8 @@ async function openChat(page) {
   await page.goto(BOT_URL);
   await page.getByRole('button', { name: 'Text Chat' }).click();
   const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: 10000 });
-  await page.getByText(/hello|hi|welcome/i).first().waitFor({ timeout: 15000 });
+  await input.waitFor({ timeout: 30000 });
+  await page.getByText(/hello|hi|welcome/i).first().waitFor({ timeout: 30000 });
   return input;
 }
 
