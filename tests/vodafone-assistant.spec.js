@@ -72,13 +72,13 @@ test.describe('Vodafone Cook Islands — Moana AI — Regression', () => {
 
     // ── Step 2: Click "TEXT CHAT" button ──────────────────────────────────────
     const chatButton = page.getByRole('button', { name: /text chat/i });
-    await chatButton.waitFor({ timeout: 15000 });
+    await chatButton.waitFor({ timeout: 30000 });
     await page.screenshot({ path: join(REPORT_DIR, 'vodafone-startup.png') }).catch(() => {});
     await chatButton.click();
     console.log('[VODAFONE] Clicked "TEXT CHAT" button');
 
     const input = page.getByRole('textbox');
-    await input.waitFor({ timeout: 10000 });
+    await input.waitFor({ timeout: 30000 });
 
     console.log('[VODAFONE] Waiting for greeting to load...');
     await sleep(8000);

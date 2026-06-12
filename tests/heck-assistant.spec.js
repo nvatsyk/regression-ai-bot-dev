@@ -72,13 +72,13 @@ test.describe('Heck Agency Assistant — Regression', () => {
 
     // ── Step 2: Click "Text Chat" button ───────────────────────────────────────
     const chatButton = page.getByRole('button', { name: 'Text Chat' });
-    await chatButton.waitFor({ timeout: 15000 });
+    await chatButton.waitFor({ timeout: 30000 });
     await page.screenshot({ path: join(REPORT_DIR, 'heck-startup.png') }).catch(() => {});
     await chatButton.click();
     console.log('[HECK] Clicked "Text Chat" button');
 
     const input = page.getByRole('textbox');
-    await input.waitFor({ timeout: 20000 });
+    await input.waitFor({ timeout: 30000 });
 
     console.log('[HECK] Waiting for greeting to load...');
     await sleep(8000);

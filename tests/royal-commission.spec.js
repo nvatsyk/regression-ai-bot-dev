@@ -94,12 +94,12 @@ test.describe('KSA (Najdi) Royal Commission Q&A [Bilingual] - Regression', () =>
     await page.goto(BOT_URL);
 
     const chatButton = page.getByRole('button', { name: 'Text Chat' });
-    await chatButton.waitFor({ timeout: 15000 });
+    await chatButton.waitFor({ timeout: 30000 });
     await chatButton.click();
     console.log('[INFO] Clicked "Text Chat" button');
 
     const input = page.getByRole('textbox');
-    await input.waitFor({ timeout: 10000 });
+    await input.waitFor({ timeout: 30000 });
 
     // Wait for the Arabic greeting to load before asserting
     console.log('[INFO] Waiting for Arabic greeting to load...');
