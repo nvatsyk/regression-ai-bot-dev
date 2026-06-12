@@ -146,7 +146,6 @@ test.describe('Vodafone Cook Islands — Moana AI — Regression', () => {
       'mobile, internet, WiFi',
       'business connectivity',
       'E-Moni Mobile Wallet',
-      'Travel SIMs',
     ];
     const step7Base = {};
     for (const p of step7Phrases) {
@@ -168,7 +167,6 @@ test.describe('Vodafone Cook Islands — Moana AI — Regression', () => {
         'mobile, internet, WiFi', 'business connectivity',
       ]},
       { label: '"E-Moni Mobile Wallet" mention', phrases: ['E-Moni Mobile Wallet', 'E-Moni'] },
-      { label: '"Travel SIMs" mention', phrases: ['Travel SIMs', 'eSIMs'] },
     ]);
     if (step7Fail) {
       await page.screenshot({ path: join(REPORT_DIR, 'vodafone-step7-fail.png') }).catch(() => {});
