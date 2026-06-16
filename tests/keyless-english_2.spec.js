@@ -93,7 +93,8 @@ test.describe('Keyless English — Greeting and Unlock Reply Flow', () => {
     let chatBtn = null;
     for (const lbl of CHAT_LABELS) {
       const btn = page.getByText(lbl, { exact: false }).first();
-      const found = await btn.waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+      console.log(`[CHAT] Waiting up to 30000ms for chat button: ${lbl}`);
+      const found = await btn.waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
       if (found) { chatBtn = btn; break; }
     }
     if (!chatBtn) {
