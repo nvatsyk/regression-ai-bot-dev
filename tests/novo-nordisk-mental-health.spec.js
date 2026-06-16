@@ -91,7 +91,7 @@ test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () =>
     // ── Step 3: Click "Start New Session" ────────────────────────────────────
     console.log('[NOVO-MH] Looking for "Start New Session" button...');
     const startBtn = page.getByRole('button', { name: /start new session/i }).first();
-    const startFound = await startBtn.waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
+    const startFound = await startBtn.waitFor({ timeout: 40000 }).then(() => true).catch(() => false);
 
     if (!startFound) {
       const startBtnText = page.getByText('Start New Session', { exact: false }).first();

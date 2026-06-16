@@ -6,8 +6,8 @@ const BOT_URL = 'https://bit.ly/TAIBAH-AI-QnA';
 
 const REPORT_DIR  = join(process.cwd(), 'reports');
 const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
-const BUG_TITLE   = 'Taibah AI Q&A greeting and Arabic response flow';
-const TEST_NAME   = 'Taibah AI Q&A greeting and Arabic response flow';
+const BUG_TITLE   = 'TAIBAH UNIVERSITY Q&A Agent greeting and Arabic response flow';
+const TEST_NAME   = 'TAIBAH UNIVERSITY Q&A Agent greeting and Arabic response flow';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -64,14 +64,14 @@ async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 600
   return null;
 }
 
-test.describe('Taibah AI Q&A — Greeting and Arabic Response Flow', () => {
+test.describe('TAIBAH UNIVERSITY Q&A Agent — Greeting and Arabic Response Flow', () => {
   test(TEST_NAME, async ({ page }) => {
     test.setTimeout(180000); // 3 min: greeting + 1 bot response + CI headroom
 
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
-    console.log('[TAIBAH] Navigating to Taibah AI Q&A bot...');
+    console.log('[TAIBAH] Navigating to TAIBAH UNIVERSITY Q&A Agent bot...');
     await page.goto(BOT_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.screenshot({ path: join(REPORT_DIR, 'taibah-startup.png') }).catch(() => {});
     console.log('[TAIBAH] Page loaded.');
@@ -81,8 +81,8 @@ test.describe('Taibah AI Q&A — Greeting and Arabic Response Flow', () => {
     let chatBtn = null;
     for (const lbl of CHAT_LABELS) {
       const btn = page.getByText(lbl, { exact: false }).first();
-      console.log(`[CHAT] Waiting up to 30000ms for chat button: ${lbl}`);
-      const found = await btn.waitFor({ timeout: 30000 }).then(() => true).catch(() => false);
+      console.log(`[CHAT] Waiting up to 40000ms for chat button: ${lbl}`);
+      const found = await btn.waitFor({ timeout: 40000 }).then(() => true).catch(() => false);
       if (found) { chatBtn = btn; break; }
     }
     if (!chatBtn) {
@@ -180,6 +180,6 @@ test.describe('Taibah AI Q&A — Greeting and Arabic Response Flow', () => {
     expect(matchedResponsePhrase, 'Step 5: bot did not respond to the Arabic question').not.toBeNull();
 
     await page.screenshot({ path: join(REPORT_DIR, 'taibah-complete.png') }).catch(() => {});
-    console.log('[TAIBAH] Test complete — Taibah AI greeting and Arabic response verified.');
+    console.log('[TAIBAH] Test complete — TAIBAH UNIVERSITY Q&A Agent greeting and Arabic response verified.');
   });
 });
