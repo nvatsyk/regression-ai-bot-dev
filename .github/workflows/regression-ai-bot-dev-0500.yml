@@ -202,8 +202,47 @@ jobs:
               "text": "❌ Monarch Roofs Outreach regression failed\nFlow: Greeting, Yes response, good response.\nTest: tests/monarch-roofs-outreach.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
+      # ── Bengali Appointment Reminder ──────────────────────────────────────
+
+      - name: Run Bengali Appointment Reminder regression
+        id: appt-bn
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-appointment-reminder-bn-en
+        run: npx playwright test tests/appointment-reminder-bn-en.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Bengali Appointment Reminder HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: appointment-reminder-bn-en-playwright-report
+          path: playwright-report-appointment-reminder-bn-en/
+          if-no-files-found: ignore
+
+      - name: Slack Bengali Appointment Reminder PASS notification
+        if: steps.appt-bn.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Bengali Appointment Reminder regression passed\nBot correctly greeted in Bengali and handled multi-turn confirmation flow.\nTest: tests/appointment-reminder-bn-en.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Bengali Appointment Reminder FAIL notification
+        if: steps.appt-bn.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Bengali Appointment Reminder regression failed\nFlow: Bengali greeting, first user message, second user message, final response.\nTest: tests/appointment-reminder-bn-en.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
-        if: steps.novo.outcome == 'failure' || steps.novo-mh.outcome == 'failure' || steps.taibah.outcome == 'failure' || steps.monarch.outcome == 'failure'
+        if: steps.novo.outcome == 'failure' || steps.novo-mh.outcome == 'failure' || steps.taibah.outcome == 'failure' || steps.monarch.outcome == 'failure' || steps.appt-bn.outcome == 'failure'
         run: exit 1
