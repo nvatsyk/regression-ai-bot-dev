@@ -163,8 +163,47 @@ jobs:
               "text": "❌ Taibah AI Q&A regression failed\nFlow: Arabic greeting detection and specializations response.\nTest: tests/taibah-ai-qa.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
+      # ── Monarch Roofs Outreach ────────────────────────────────────────────
+
+      - name: Run Monarch Roofs Outreach regression
+        id: monarch
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-monarch-roofs-outreach
+        run: npx playwright test tests/monarch-roofs-outreach.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Monarch Roofs Outreach HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monarch-roofs-outreach-playwright-report
+          path: playwright-report-monarch-roofs-outreach/
+          if-no-files-found: ignore
+
+      - name: Slack Monarch Roofs PASS notification
+        if: steps.monarch.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Monarch Roofs Outreach regression passed\nBot correctly greeted, responded to \"Yes\", and replied after \"good\".\nTest: tests/monarch-roofs-outreach.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Monarch Roofs FAIL notification
+        if: steps.monarch.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Monarch Roofs Outreach regression failed\nFlow: Greeting, Yes response, good response.\nTest: tests/monarch-roofs-outreach.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
-        if: steps.novo.outcome == 'failure' || steps.novo-mh.outcome == 'failure' || steps.taibah.outcome == 'failure'
+        if: steps.novo.outcome == 'failure' || steps.novo-mh.outcome == 'failure' || steps.taibah.outcome == 'failure' || steps.monarch.outcome == 'failure'
         run: exit 1
