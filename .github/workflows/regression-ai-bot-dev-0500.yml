@@ -85,8 +85,47 @@ jobs:
               "text": "❌ Novo Nordisk Q&A regression failed\nFlow: Greeting detection and GLP-1 therapy response.\nTest: tests/novo-nordisk-qa.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
+      # ── Novo Nordisk Mental Health ────────────────────────────────────────
+
+      - name: Run Novo Nordisk Mental Health regression
+        id: novo-mh
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-novo-nordisk-mental-health
+        run: npx playwright test tests/novo-nordisk-mental-health.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Novo Nordisk Mental Health HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: novo-nordisk-mental-health-playwright-report
+          path: playwright-report-novo-nordisk-mental-health/
+          if-no-files-found: ignore
+
+      - name: Slack Novo Nordisk Mental Health PASS notification
+        if: steps.novo-mh.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Novo Nordisk Mental Health regression passed\nBot correctly greeted and responded to user message.\nTest: tests/novo-nordisk-mental-health.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Novo Nordisk Mental Health FAIL notification
+        if: steps.novo-mh.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Novo Nordisk Mental Health regression failed\nFlow: Start New Session, greeting detection, response to user message.\nTest: tests/novo-nordisk-mental-health.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
-        if: steps.novo.outcome == 'failure'
+        if: steps.novo.outcome == 'failure' || steps.novo-mh.outcome == 'failure'
         run: exit 1
