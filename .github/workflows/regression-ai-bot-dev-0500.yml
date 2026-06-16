@@ -124,8 +124,47 @@ jobs:
               "text": "❌ Novo Nordisk Mental Health regression failed\nFlow: Start New Session, greeting detection, response to user message.\nTest: tests/novo-nordisk-mental-health.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
             }
 
+      # ── Taibah AI Q&A ─────────────────────────────────────────────────────
+
+      - name: Run Taibah AI Q&A regression
+        id: taibah
+        env:
+          PLAYWRIGHT_HTML_REPORT: playwright-report-taibah-ai-qa
+        run: npx playwright test tests/taibah-ai-qa.spec.js --reporter=html
+        continue-on-error: true
+
+      - name: Upload Taibah AI Q&A HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: taibah-ai-qa-playwright-report
+          path: playwright-report-taibah-ai-qa/
+          if-no-files-found: ignore
+
+      - name: Slack Taibah AI Q&A PASS notification
+        if: steps.taibah.outcome == 'success'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Taibah AI Q&A regression passed\nBot correctly greeted in Arabic and responded to university specializations question.\nTest: tests/taibah-ai-qa.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
+      - name: Slack Taibah AI Q&A FAIL notification
+        if: steps.taibah.outcome == 'failure'
+        uses: slackapi/slack-github-action@v2.0.0
+        with:
+          webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Taibah AI Q&A regression failed\nFlow: Arabic greeting detection and specializations response.\nTest: tests/taibah-ai-qa.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
-        if: steps.novo.outcome == 'failure' || steps.novo-mh.outcome == 'failure'
+        if: steps.novo.outcome == 'failure' || steps.novo-mh.outcome == 'failure' || steps.taibah.outcome == 'failure'
         run: exit 1
