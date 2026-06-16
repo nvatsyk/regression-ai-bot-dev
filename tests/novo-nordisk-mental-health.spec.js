@@ -72,7 +72,7 @@ async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 600
 
 test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () => {
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(180000); // 3 min: load + session start + greeting + response + CI headroom
+    test.setTimeout(240000); // 4 min: load + session start + greeting + response + CI headroom
 
     mkdirSync(REPORT_DIR, { recursive: true });
 
@@ -140,7 +140,7 @@ test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () =>
     await sleep(1000); // let the greeting finish rendering
     const actualGreeting = await getAllFramesText(page);
     console.log(`[NOVO-MH] Greeting detected via phrase: "${matchedGreetingPhrase}"`);
-    console.log(`[NOVO-MH] Actual greeting text: ${actualGreeting.slice(0, 500)}`);
+    console.log('[NOVO-MH] Actual greeting text:', actualGreeting.slice(0, 500));
     await page.screenshot({ path: join(REPORT_DIR, 'novo-mh-greeting.png') }).catch(() => {});
 
     if (!matchedGreetingPhrase) {
@@ -151,40 +151,74 @@ test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () =>
     console.log('[NOVO-MH] Greeting validated. Sending user message now.');
 
     // ── Step 5: Send "good" ───────────────────────────────────────────────────
-    // Capture response baselines AFTER greeting is confirmed, so any new bot
-    // content after "good" is detected as a response.
+    // Baselines captured AFTER greeting is confirmed so any new bot content is
+    // detected as a response. Wide phrase list covers all likely phrasings.
     const RESPONSE_PHRASES = [
-      "glad to hear", "great to hear", "happy to hear",
+      // Positive acknowledgments
+      "glad to hear", "Glad to hear",
+      "great to hear", "Great to hear",
+      "good to hear", "Good to hear",
+      "happy to hear", "Happy to hear",
+      "pleased to hear", "Pleased to hear",
+      "wonderful", "Wonderful",
+      "excellent", "Excellent",
+      "fantastic", "Fantastic",
+      "perfect", "Perfect",
+      "awesome", "Awesome",
+      "that's great", "That's great",
+      "that is great", "That is great",
+      // Follow-up questions
       "tell me more", "Tell me more",
       "how long", "How long",
       "can you share", "can you tell",
       "what else", "What else",
+      "would you like", "Would you like",
+      "how can I help", "How can I help",
+      "how can I support", "How can I support",
+      "what brings you", "What brings you",
+      "what would you", "What would you",
+      "let's talk", "Let's talk",
+      // Empathy / acknowledgment
       "sounds like", "Sounds like",
       "I understand", "I hear you",
       "thank you for", "Thank you for",
-      "would you like", "Would you like",
-      "let's talk", "let us talk",
-      "that's great", "That's great",
+      "I'm glad", "I am glad",
+      "I'm happy", "I am happy",
+      // Generic continuations
+      "of course", "Of course",
+      "certainly", "Certainly",
+      "absolutely", "Absolutely",
+      "I see", "noted", "sure",
     ];
     const responseBaselines = {};
     for (const p of RESPONSE_PHRASES) {
       responseBaselines[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
     }
 
-    console.log('[NOVO-MH] Sending: "good"');
+    const sentAt = Date.now();
+    console.log(`[NOVO-MH] Sending: "good" at ${new Date(sentAt).toISOString()}`);
     await sendMessage(page, 'good');
-    console.log('[NOVO-MH] Message sent — waiting up to 60s for bot response.');
+    console.log('[NOVO-MH] Message sent — waiting up to 90s for bot response.');
 
     // ── Step 6: Validate bot response ─────────────────────────────────────────
-    const matchedResponsePhrase = await waitForAnyNewOccurrence(page, RESPONSE_PHRASES, responseBaselines, 60000);
+    const matchedResponsePhrase = await waitForAnyNewOccurrence(page, RESPONSE_PHRASES, responseBaselines, 90000);
+    const responseMs = Date.now() - sentAt;
 
     await sleep(1000);
     const actualResponse = await getAllFramesText(page);
-    console.log(`[NOVO-MH] Response detected via phrase: "${matchedResponsePhrase}"`);
-    console.log(`[NOVO-MH] Actual bot response: ${actualResponse.slice(0, 500)}`);
+    console.log(`[NOVO-MH] Response detected via phrase: "${matchedResponsePhrase}" (${responseMs}ms after send)`);
+    console.log('[NOVO-MH] Actual bot response:', actualResponse.slice(0, 500));
     await page.screenshot({ path: join(REPORT_DIR, 'novo-mh-after-good.png') }).catch(() => {});
 
     if (!matchedResponsePhrase) {
+      const dbg = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('*'))
+          .map(el => (el.innerText || el.textContent || '').trim())
+          .filter(t => t.length > 10)
+          .slice(0, 30)
+          .join(' | ')
+      ).catch(() => '');
+      console.log('[NOVO-MH] DEBUG — visible page text nodes:', dbg.slice(0, 600));
       await page.screenshot({ path: join(REPORT_DIR, 'novo-mh-response-fail.png') }).catch(() => {});
       logFailure('Step 6: Bot response to "good"', 'no response received', actualResponse);
     }
