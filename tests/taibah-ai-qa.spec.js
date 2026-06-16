@@ -102,13 +102,23 @@ test.describe('Taibah AI Q&A — Greeting and Arabic Response Flow', () => {
     await sleep(2000);
 
     // ── Step 3: Wait for greeting ─────────────────────────────────────────────
-    // Mix of Arabic greeting keywords and English fallbacks. The baseline is
-    // captured after the click so any count increase indicates a new bot message.
+    // Covers all Arabic greeting variants (with/without tanwin), bot names, and
+    // English fallbacks so any phrasing the bot uses triggers detection.
     const GREETING_PHRASES = [
-      // Arabic greetings and common bot intro phrases
-      'مرحبا', 'أهلا', 'أهلً', 'مساء', 'صباح',
-      'كيف يمكنني', 'مساعدتك', 'يمكنني مساعدتك',
+      // Arabic greetings — standard and tanwin forms
+      'مرحباً', 'مرحبا',
+      'أهلاً وسهلاً', 'أهلاً', 'أهلا',
+      'السلام عليكم',
+      // Bot name variants
+      'دانا', 'Dana',
+      // University name
       'جامعة طيبة', 'طيبة',
+      // Common Arabic assistant openers
+      'كيف يمكنني مساعدتك', 'كيف يمكنني',
+      'كيف أستطيع مساعدتك', 'كيف أستطيع',
+      'مساعدتك', 'يمكنني مساعدتك',
+      // Time-of-day greetings
+      'مساء', 'صباح',
       // English fallbacks
       'How can I help', 'how can I help',
       'Hello', 'Welcome', 'Hi there',
@@ -125,7 +135,7 @@ test.describe('Taibah AI Q&A — Greeting and Arabic Response Flow', () => {
     await sleep(1000); // let the greeting finish rendering
     const actualGreeting = await getAllFramesText(page);
     console.log(`[TAIBAH] Greeting detected via phrase: "${matchedGreetingPhrase}"`);
-    console.log(`[TAIBAH] Actual greeting text: ${actualGreeting.slice(0, 500)}`);
+    console.log('[TAIBAH] Actual greeting:', actualGreeting.slice(0, 500));
     await page.screenshot({ path: join(REPORT_DIR, 'taibah-greeting.png') }).catch(() => {});
 
     if (!matchedGreetingPhrase) {
@@ -160,7 +170,7 @@ test.describe('Taibah AI Q&A — Greeting and Arabic Response Flow', () => {
     await sleep(1000);
     const actualResponse = await getAllFramesText(page);
     console.log(`[TAIBAH] Response detected via phrase: "${matchedResponsePhrase}"`);
-    console.log(`[TAIBAH] Actual bot response: ${actualResponse.slice(0, 500)}`);
+    console.log('[TAIBAH] Actual response:', actualResponse.slice(0, 500));
     await page.screenshot({ path: join(REPORT_DIR, 'taibah-after-question.png') }).catch(() => {});
 
     if (!matchedResponsePhrase) {
