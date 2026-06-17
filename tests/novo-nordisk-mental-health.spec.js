@@ -70,6 +70,62 @@ async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 600
   return null;
 }
 
+// Polls up to 60s for "Start New Session" or close variants, scrolling it into
+// view and clicking it. Returns true on success, false on timeout.
+async function findAndClickStartSession(page) {
+  const VARIATIONS = ['Start New Session', 'Start New', 'New Session', 'Session'];
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    // Playwright role locator (most reliable when button is in normal DOM)
+    const roleBtn = page.getByRole('button', { name: /start new session/i }).first();
+    if (await roleBtn.isVisible().catch(() => false)) {
+      await roleBtn.scrollIntoViewIfNeeded().catch(() => {});
+      console.log('[NOVO-MH] Found "Start New Session" via role locator.');
+      await roleBtn.click();
+      return true;
+    }
+    // DOM + shadow DOM scan with scroll-into-view before click
+    const clicked = await page.evaluate((variations) => {
+      function scanRoot(root) {
+        return Array.from(root.querySelectorAll('button,[role="button"],a')).find(el => {
+          const t = (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim();
+          return variations.some(v => t.toLowerCase().includes(v.toLowerCase()));
+        }) || null;
+      }
+      let el = scanRoot(document);
+      if (!el) {
+        for (const host of document.querySelectorAll('*')) {
+          if (host.shadowRoot) { el = scanRoot(host.shadowRoot); if (el) break; }
+        }
+      }
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        el.click();
+        return (el.innerText || el.textContent || '').trim();
+      }
+      return null;
+    }, VARIATIONS).catch(() => null);
+    if (clicked) { console.log(`[NOVO-MH] Found session button via DOM: "${clicked}"`); return true; }
+    // Playwright text locators as additional fallback
+    for (const v of VARIATIONS) {
+      const el = page.getByText(v, { exact: false }).first();
+      if (await el.isVisible().catch(() => false)) {
+        await el.scrollIntoViewIfNeeded().catch(() => {});
+        console.log(`[NOVO-MH] Found session button via text locator: "${v}"`);
+        await el.click();
+        return true;
+      }
+    }
+    await sleep(2000);
+  }
+  const vis = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('button,[role="button"],a'))
+      .map(b => (b.innerText || b.textContent || b.getAttribute('aria-label') || '').trim()).filter(Boolean)
+  ).catch(() => []);
+  console.log('[NOVO-MH] "Start New Session" NOT found after 60s. Visible elements:', vis);
+  return false;
+}
+
 test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () => {
   test(TEST_NAME, async ({ page }) => {
     test.setTimeout(240000); // 4 min: load + session start + greeting + response + CI headroom
@@ -89,26 +145,16 @@ test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () =>
     await page.screenshot({ path: join(REPORT_DIR, 'novo-mh-scrolled.png') }).catch(() => {});
 
     // ── Step 3: Click "Start New Session" ────────────────────────────────────
-    console.log('[NOVO-MH] Looking for "Start New Session" button...');
-    const startBtn = page.getByRole('button', { name: /start new session/i }).first();
-    const startFound = await startBtn.waitFor({ timeout: 40000 }).then(() => true).catch(() => false);
-
-    if (!startFound) {
-      const startBtnText = page.getByText('Start New Session', { exact: false }).first();
-      const startFoundText = await startBtnText.waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
-      if (!startFoundText) {
-        const vis = await page.evaluate(() =>
-          Array.from(document.querySelectorAll('button,[role="button"],a'))
-            .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
-        ).catch(() => []);
-        console.log('[NOVO-MH] "Start New Session" not found. Visible elements:', vis);
-        await page.screenshot({ path: join(REPORT_DIR, 'novo-mh-start-btn-not-found.png') }).catch(() => {});
-        logFailure('Step 3: Start New Session', '"Start New Session" button not found', vis.join(', '));
-        throw new Error('[NOVO-MH] "Start New Session" button not found.');
-      }
-      await startBtnText.click();
-    } else {
-      await startBtn.click();
+    console.log('[NOVO-MH] Looking for "Start New Session" button (up to 60s)...');
+    const sessionStarted = await findAndClickStartSession(page);
+    if (!sessionStarted) {
+      const vis = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('button,[role="button"],a'))
+          .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
+      ).catch(() => []);
+      await page.screenshot({ path: join(REPORT_DIR, 'novo-mh-start-btn-not-found.png') }).catch(() => {});
+      logFailure('Step 3: Start New Session', '"Start New Session" button not found', vis.join(', '));
+      throw new Error('[NOVO-MH] "Start New Session" button not found after 60s. Visible: ' + vis.join(', '));
     }
     console.log('[NOVO-MH] "Start New Session" clicked.');
     await page.screenshot({ path: join(REPORT_DIR, 'novo-mh-after-start.png') }).catch(() => {});

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+﻿import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -63,6 +63,48 @@ async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 600
   return null;
 }
 
+// Polls up to 60s for any common chat launch button, clicking the first match found.
+// Checks DOM + shadow DOM + Playwright role locators on each 2s tick.
+async function openChatButton(page, prefix = '[CHAT]', failScreenshot = null) {
+  const LABELS = ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", "Let's Chat", 'Start', 'Open Chat'];
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    const clicked = await page.evaluate((labels) => {
+      function scanRoot(root) {
+        return Array.from(root.querySelectorAll('button,[role="button"]')).find(el => {
+          const t = (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim();
+          return labels.some(l => t.toLowerCase().includes(l.toLowerCase()));
+        }) || null;
+      }
+      let el = scanRoot(document);
+      if (!el) {
+        for (const host of document.querySelectorAll('*')) {
+          if (host.shadowRoot) { el = scanRoot(host.shadowRoot); if (el) break; }
+        }
+      }
+      if (el) { el.click(); return (el.innerText || el.textContent || '').trim(); }
+      return null;
+    }, LABELS).catch(() => null);
+    if (clicked) { console.log(`${prefix} Opened chat via DOM: "${clicked}"`); return true; }
+    for (const lbl of LABELS) {
+      const btn = page.getByRole('button', { name: lbl, exact: false }).first();
+      if (await btn.isVisible().catch(() => false)) {
+        console.log(`${prefix} Opened chat via role locator: "${lbl}"`);
+        await btn.click();
+        return true;
+      }
+    }
+    await sleep(2000);
+  }
+  const vis = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('button,[role="button"]'))
+      .map(b => (b.innerText || b.textContent || b.getAttribute('aria-label') || '').trim()).filter(Boolean)
+  ).catch(() => []);
+  console.log(`${prefix} Chat button NOT found after 60s. Visible buttons:`, vis);
+  if (failScreenshot) await page.screenshot({ path: failScreenshot }).catch(() => {});
+  return false;
+}
+
 test.describe('Novo Nordisk Q&A Agent — Greeting and GLP-1 Response Flow', () => {
   test(TEST_NAME, async ({ page }) => {
     test.setTimeout(180000); // 3 min: greeting + 1 bot response + CI headroom
@@ -75,25 +117,17 @@ test.describe('Novo Nordisk Q&A Agent — Greeting and GLP-1 Response Flow', () 
     await page.screenshot({ path: join(REPORT_DIR, 'novo-startup.png') }).catch(() => {});
 
     // ── Step 2: Open chat ─────────────────────────────────────────────────────
-    const CHAT_LABELS = ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", "Let’s Chat"];
-    let chatBtn = null;
-    for (const lbl of CHAT_LABELS) {
-      const btn = page.getByText(lbl, { exact: false }).first();
-      console.log(`[CHAT] Waiting up to 40000ms for chat button: ${lbl}`);
-      const found = await btn.waitFor({ timeout: 40000 }).then(() => true).catch(() => false);
-      if (found) { chatBtn = btn; break; }
-    }
-    if (!chatBtn) {
+    console.log('[NOVO] Opening chat widget (up to 60s)...');
+    const chatOpened = await openChatButton(page, '[NOVO]', join(REPORT_DIR, 'novo-open-btn-not-found.png'));
+    if (!chatOpened) {
       const vis = await page.evaluate(() =>
         Array.from(document.querySelectorAll('button,[role="button"]'))
           .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
       ).catch(() => []);
-      console.log('[NOVO] Chat button not found. Visible buttons:', vis);
-      await page.screenshot({ path: join(REPORT_DIR, 'novo-open-btn-not-found.png') }).catch(() => {});
-      throw new Error(`[NOVO] Chat button not found. Tried: ${CHAT_LABELS.join(', ')}. Visible: ${vis.join(', ')}`);
+      logFailure('Step 2: Chat button', 'no chat button found', vis.join(', '));
+      throw new Error('[NOVO] Chat button not found after 60s. Visible: ' + vis.join(', '));
     }
-    console.log('[NOVO] Found chat button — clicking.');
-    await chatBtn.click();
+    console.log('[NOVO] Chat opened — waiting for panel to settle.');
 
     // Brief pause so the chat panel can open before we snapshot baselines.
     await sleep(2000);

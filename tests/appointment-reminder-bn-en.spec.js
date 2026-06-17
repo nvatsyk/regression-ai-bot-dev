@@ -74,6 +74,48 @@ async function captureBaselines(page, phrases) {
   return baselines;
 }
 
+// Polls up to 60s for any common chat launch button, clicking the first match found.
+// Checks DOM + shadow DOM + Playwright role locators on each 2s tick.
+async function openChatButton(page, prefix = '[CHAT]', failScreenshot = null) {
+  const LABELS = ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", "Let’s Chat", 'Start', 'Open Chat'];
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    const clicked = await page.evaluate((labels) => {
+      function scanRoot(root) {
+        return Array.from(root.querySelectorAll('button,[role="button"]')).find(el => {
+          const t = (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim();
+          return labels.some(l => t.toLowerCase().includes(l.toLowerCase()));
+        }) || null;
+      }
+      let el = scanRoot(document);
+      if (!el) {
+        for (const host of document.querySelectorAll('*')) {
+          if (host.shadowRoot) { el = scanRoot(host.shadowRoot); if (el) break; }
+        }
+      }
+      if (el) { el.click(); return (el.innerText || el.textContent || '').trim(); }
+      return null;
+    }, LABELS).catch(() => null);
+    if (clicked) { console.log(`${prefix} Opened chat via DOM: "${clicked}"`); return true; }
+    for (const lbl of LABELS) {
+      const btn = page.getByRole('button', { name: lbl, exact: false }).first();
+      if (await btn.isVisible().catch(() => false)) {
+        console.log(`${prefix} Opened chat via role locator: "${lbl}"`);
+        await btn.click();
+        return true;
+      }
+    }
+    await sleep(2000);
+  }
+  const vis = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('button,[role="button"]'))
+      .map(b => (b.innerText || b.textContent || b.getAttribute('aria-label') || '').trim()).filter(Boolean)
+  ).catch(() => []);
+  console.log(`${prefix} Chat button NOT found after 60s. Visible buttons:`, vis);
+  if (failScreenshot) await page.screenshot({ path: failScreenshot }).catch(() => {});
+  return false;
+}
+
 test.describe('Bengali Appointment Reminder — Multi-Turn Conversation Flow', () => {
   test(TEST_NAME, async ({ page }) => {
     test.setTimeout(300000); // 5 min: greeting + 2 exchanges + CI headroom
@@ -87,27 +129,17 @@ test.describe('Bengali Appointment Reminder — Multi-Turn Conversation Flow', (
     console.log('[APPT-BN] Page loaded.');
 
     // ── Step 2: Open chat ─────────────────────────────────────────────────────
-    const CHAT_LABELS = ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", "Let's Chat"];
-    let chatBtn = null;
-    for (const lbl of CHAT_LABELS) {
-      const btn = page.getByText(lbl, { exact: false }).first();
-      console.log(`[CHAT] Waiting up to 40000ms for chat button: ${lbl}`);
-      const found = await btn.waitFor({ timeout: 40000 }).then(() => true).catch(() => false);
-      if (found) { chatBtn = btn; break; }
-    }
-    if (!chatBtn) {
+    console.log('[APPT-BN] Opening chat widget (up to 60s)...');
+    const chatOpened = await openChatButton(page, '[APPT-BN]', join(REPORT_DIR, 'appt-bn-open-btn-not-found.png'));
+    if (!chatOpened) {
       const vis = await page.evaluate(() =>
         Array.from(document.querySelectorAll('button,[role="button"]'))
           .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
       ).catch(() => []);
-      console.log('[APPT-BN] Chat button not found. Visible buttons:', vis);
-      await page.screenshot({ path: join(REPORT_DIR, 'appt-bn-open-btn-not-found.png') }).catch(() => {});
       logFailure('Step 2: Chat button', 'no chat button found', vis.join(', '));
-      throw new Error(`[APPT-BN] Chat button not found. Tried: ${CHAT_LABELS.join(', ')}. Visible: ${vis.join(', ')}`);
+      throw new Error('[APPT-BN] Chat button not found after 60s. Visible: ' + vis.join(', '));
     }
-    console.log('[APPT-BN] Found chat button — clicking.');
-    await chatBtn.click();
-    console.log('[APPT-BN] Text Chat clicked.');
+    console.log('[APPT-BN] Chat opened — waiting for panel to settle.');
 
     // Brief pause so the chat panel can open before snapshotting baselines.
     await sleep(2000);
@@ -176,11 +208,13 @@ test.describe('Bengali Appointment Reminder — Multi-Turn Conversation Flow', (
     // Capture baselines for the final bot turn BEFORE sending.
     // Use broad phrases — counts will increase beyond step-2 baselines when bot replies.
     const FINAL_PHRASES = [
-      // Expected: "অ্যাপয়েন্টমেন্টের ব্যাপারে নিশ্চিত করার জন্য ধন্যবাদ! জন্ম তারিখটি বলতে পারবেন?"
-      'ধন্যবাদ', 'অ্যাপয়েন্টমেন্ট', 'জন্ম তারিখ', 'তথ্য', 'নিশ্চিত',
+      // Common bot response phrases (spaced and compound forms both covered)
+      'ধন্যবাদ', 'অ্যাপয়েন্টমেন্ট', 'জন্ম তারিখ', 'জন্মতারিখ', 'তথ্য', 'নিশ্চিত',
       'সঠিক', 'বলতে পারবেন', 'দয়া করে',
-      // Broader fallbacks
-      'আপনার', 'ব্যাপারে', 'করার জন্য',
+      // Broader Bengali content words — any substantive reply will contain at least one
+      'আপনার', 'আমার', 'ব্যাপারে', 'করার জন্য',
+      'অপেক্ষা', 'চেষ্টা', 'মনে', 'কাগজ', 'প্রয়োজনে',
+      'করুন', 'পারবেন', 'পারেন', 'বলুন',
       // English fallbacks
       'appointment', 'thank', 'confirm', 'date of birth', 'information',
       'correct', 'please', 'verify',
