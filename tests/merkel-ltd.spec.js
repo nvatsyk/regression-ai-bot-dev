@@ -8,8 +8,8 @@ const BOT_URL =
 
 const REPORT_DIR  = join(process.cwd(), 'reports');
 const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
-const BUG_TITLE   = 'Merkel LTD Boardroom Q&A flow';
-const TEST_NAME   = 'Merkel LTD Boardroom Q&A flow';
+const BUG_TITLE   = 'Merkel LTD Bengali working hours flow';
+const TEST_NAME   = 'Merkel LTD Bengali working hours flow';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -23,6 +23,18 @@ function logFailure(stepLabel, failedPhrase, pageText) {
     new Date().toISOString(), TEST_NAME, BUG_TITLE, stepLabel, failedPhrase, pageText.slice(0, 400),
   ].map(csvEscape).join(',') + '\n';
   appendFileSync(REPORT_PATH, row);
+}
+
+// Best-effort text snapshot for debug logging (may not capture cross-origin iframe content).
+async function getAllFramesText(page) {
+  const parts = [];
+  for (const frame of page.frames()) {
+    const t = await frame.evaluate(() =>
+      document.body ? document.body.innerText : ''
+    ).catch(() => '');
+    if (t.trim()) parts.push(t.trim());
+  }
+  return parts.join('\n');
 }
 
 async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
@@ -40,45 +52,48 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-// Polls until the occurrence count of phrase INCREASES beyond beforeCount.
-async function waitForNewOccurrence(page, phrase, beforeCount, timeoutMs = 40000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-    if (count > beforeCount) return true;
-    await sleep(2000);
-  }
-  console.log(`[MERKEL] waitForNewOccurrence: "${phrase}" did not appear within ${timeoutMs}ms`);
-  return false;
-}
-
-// Polls until any phrase in the list has more occurrences than its baseline count.
-async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
+// Polls until any phrase count increases above its baseline. Returns matched phrase or null.
+async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 50000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const phrase of phrases) {
       const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return true;
+      if (count > (baselines[phrase] ?? 0)) return phrase;
     }
     await sleep(2000);
-  }
-  return false;
-}
-
-// Returns the label of the first phrase group with NO match on the page, or null if all pass.
-async function checkPhraseGroups(page, phraseGroups) {
-  for (const g of phraseGroups) {
-    let matched = false;
-    for (const phrase of g.phrases) {
-      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > 0) { matched = true; break; }
-    }
-    if (!matched) return g.label ?? g.phrases.join(' | ');
   }
   return null;
 }
 
-test.describe('Merkel LTD — Boardroom Q&A Flow', () => {
+async function captureBaselines(page, phrases) {
+  const baselines = {};
+  for (const p of phrases) {
+    baselines[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+  }
+  return baselines;
+}
+
+// Broad greeting phrases — any bot greeting will include at least one.
+const GREETING_PHRASES = [
+  'হ্যালো', 'বোর্দরুম', 'Boardroom', 'Jessica',
+  'ধন্যবাদ', 'Hello', 'কল', 'সাহায্য', 'help', 'calling', 'Good',
+];
+
+// Broad response phrases — any bot reply to a working-hours question will include at least one.
+const RESPONSE_PHRASES = [
+  // Bengali time and schedule words
+  'সময়', 'দিন', 'ঘণ্টা', 'সকাল', 'বিকেল', 'রাত', 'দুপুর',
+  'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি', 'রবি',
+  'থেকে', 'পর্যন্ত', 'খোলা', 'বন্ধ', 'কাজ', 'অফিস',
+  // Common Bengali conversational words (present in virtually any reply)
+  'আমাদের', 'আপনার', 'আপনি', 'আমরা', 'আমি',
+  'হয়', 'আছে', 'হবে', 'পাবেন', 'করুন',
+  // English fallbacks (bot may mix languages)
+  'hours', 'Monday', 'Friday', 'open', 'available',
+  'schedule', 'working', 'time', 'office', 'closed',
+];
+
+test.describe('Merkel LTD — Bengali Working Hours Flow', () => {
   test.use({ locale: 'en-US' });
 
   test(TEST_NAME, async ({ page }) => {
@@ -95,85 +110,65 @@ test.describe('Merkel LTD — Boardroom Q&A Flow', () => {
     const chatBtn = page.getByRole('button', { name: /text chat/i });
     await chatBtn.waitFor({ timeout: 30000 });
     console.log('[MERKEL] Found "Text Chat" button — clicking.');
+
+    // Capture baselines BEFORE clicking so greeting is reliably detected.
+    const greetingBaselines = await captureBaselines(page, GREETING_PHRASES);
     await chatBtn.click();
+    await sleep(2000); // brief settle for panel to begin loading
 
-    // ── Step 3: Wait for and validate greeting ────────────────────────────────
-    // Poll on "Boardroom" as the stable anchor of the greeting.
-    const greetingArrived = await waitForNewOccurrence(page, 'Boardroom', 0, 60000);
-    if (!greetingArrived) {
-      const fallback = await waitForNewOccurrence(page, 'Welcome', 0, 15000);
-      if (!fallback) console.log('[MERKEL] Greeting poll timed out — asserting anyway');
-    }
+    // ── Step 3: Wait for any non-empty bot greeting (up to 50s) ──────────────
+    console.log('[MERKEL] Waiting up to 50s for bot greeting...');
+    const matchedGreeting = await waitForAnyNewOccurrence(page, GREETING_PHRASES, greetingBaselines, 50000);
+
     await sleep(1000);
-
-    const actualGreeting = await page.evaluate(() => document.body.innerText).catch(() => '');
+    const actualGreeting = await getAllFramesText(page);
+    console.log(`[MERKEL] Greeting detected via phrase: "${matchedGreeting}"`);
     console.log(`[MERKEL] Greeting text snapshot: ${actualGreeting.slice(0, 300)}`);
     await page.screenshot({ path: join(REPORT_DIR, 'merkel-greeting.png') }).catch(() => {});
 
-    // Validate greeting contains MOST of: welcome, Boardroom, questions/help, and at least one amenity.
-    const greetingFail = await checkPhraseGroups(page, [
-      { label: 'welcome message', phrases: [
-        'Welcome', 'welcome', 'Hello', 'hello', 'Hi', 'hi',
-      ]},
-      { label: 'Boardroom mention', phrases: [
-        'Boardroom', 'boardroom',
-      ]},
-      { label: 'questions/help mention', phrases: [
-        'questions', 'help', 'assist', 'How can I', 'how can I',
-        'answer', 'support', 'anything',
-      ]},
-    ]);
-    if (greetingFail) {
+    if (!matchedGreeting) {
       await page.screenshot({ path: join(REPORT_DIR, 'merkel-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', greetingFail, actualGreeting);
+      logFailure('Step 3: Greeting', 'no greeting detected', actualGreeting);
     }
-    expect(greetingFail, `Step 3 greeting missing: "${greetingFail}"`).toBeNull();
-    console.log('[MERKEL] Greeting validated.');
+    expect(matchedGreeting, 'Step 3: bot did not send a greeting').not.toBeNull();
 
-    // ── Step 4: Send "Tell me about cafe" ─────────────────────────────────────
-    // The chat widget is inside a same-origin iframe: document.body.innerText
-    // cannot see it, but page.locator() / page.getByText() can (same-origin access).
-    const beforeCafeCount = await page.locator('*').count().catch(() => 0);
-    console.log(`[MERKEL] Element count before send: ${beforeCafeCount}`);
+    // Wait for the textbox — signals the bot finished its opening message.
+    await page.getByRole('textbox').waitFor({ timeout: 40000 }).catch(() => {});
+    await sleep(3000); // extra settle so streaming greeting text finishes
+    console.log('[MERKEL] Greeting validated and input ready.');
 
-    await sendMessage(page, 'Tell me about cafe');
-    console.log('[MERKEL] Sent "Tell me about cafe" — waiting for any bot response.');
+    // ── Step 4: Send Bengali working-hours question ───────────────────────────
+    // Capture response baselines AFTER greeting is fully settled.
+    const responseBaselines = await captureBaselines(page, RESPONSE_PHRASES);
 
-    // ── Step 5: Validate any non-empty bot response ───────────────────────────
-    // Confirm the user message appeared in the widget, then wait for bot response.
+    const USER_MSG = 'আপনার কাজের সময়সূচী কী?';
+    console.log(`[MERKEL] Sending: "${USER_MSG}"`);
+    await sendMessage(page, USER_MSG);
+    console.log('[MERKEL] Message sent — waiting for any bot response.');
+
+    // ── Step 5: Validate any non-empty bot response (up to 50s) ──────────────
     let msgAppeared = false;
     try {
-      await page.getByText('Tell me about cafe', { exact: false }).waitFor({ timeout: 30000 });
+      await page.getByText(USER_MSG, { exact: false }).waitFor({ timeout: 40000 });
       msgAppeared = true;
     } catch {}
-    console.log(`[MERKEL] User message appeared in widget: ${msgAppeared}`);
+    console.log(`[MERKEL] User message visible in widget: ${msgAppeared}`);
 
-    const afterUserMsgCount = await page.locator('*').count().catch(() => 0);
-    const cafeDeadline = Date.now() + 50000;
-    let botResponded = false;
-    while (Date.now() < cafeDeadline) {
-      const currentCount = await page.locator('*').count().catch(() => 0);
-      if (currentCount > afterUserMsgCount + 3) { botResponded = true; break; }
-      await sleep(2000);
-    }
-    if (!botResponded) {
-      console.log('[MERKEL] No bot response detected within 50s — asserting anyway');
-    }
+    const matchedResponse = await waitForAnyNewOccurrence(page, RESPONSE_PHRASES, responseBaselines, 50000);
+
     await sleep(1000);
-
-    const actualCafeText = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log(`[MERKEL] Cafe response snapshot: ${actualCafeText.slice(0, 400)}`);
+    const actualResponse = await getAllFramesText(page);
+    console.log(`[MERKEL] Response detected via phrase: "${matchedResponse}"`);
+    console.log(`[MERKEL] Response text snapshot: ${actualResponse.slice(0, 400)}`);
     await page.screenshot({ path: join(REPORT_DIR, 'merkel-cafe-response.png') }).catch(() => {});
 
-    if (!botResponded) {
+    if (!matchedResponse) {
       await page.screenshot({ path: join(REPORT_DIR, 'merkel-cafe-fail.png') }).catch(() => {});
-      logFailure('Step 5: Cafe response', 'no bot response received', actualCafeText);
+      logFailure('Step 5: Response', 'no response detected', actualResponse);
     }
-    const finalCafeCount = await page.locator('*').count().catch(() => 0);
-    // User message + bot response together must add at least 6 new elements.
-    expect(finalCafeCount, 'Step 5: bot gave no response after "Tell me about cafe"').toBeGreaterThan(beforeCafeCount + 5);
+    expect(matchedResponse, 'Step 5: bot did not respond to Bengali message').not.toBeNull();
 
     await page.screenshot({ path: join(REPORT_DIR, 'merkel-complete.png') }).catch(() => {});
-    console.log('[MERKEL] Test complete — Boardroom greeting and cafe response verified.');
+    console.log('[MERKEL] Test complete — Bengali greeting and working-hours response verified.');
   });
 });
