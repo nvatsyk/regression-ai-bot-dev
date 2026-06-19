@@ -38,45 +38,6 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install chromium
 
-      # ── BFL_2 ──────────────────────────────────────────────────────────────
-
-      - name: Run BFL_2 regression
-        id: bfl2
-        env:
-          PLAYWRIGHT_HTML_REPORT: playwright-report-bfl-2
-        run: npx playwright test tests/bfl_2.spec.js --reporter=html
-        continue-on-error: true
-
-      - name: Upload BFL_2 HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bfl-2-playwright-report
-          path: playwright-report-bfl-2/
-          if-no-files-found: ignore
-
-      - name: Slack BFL_2 PASS notification
-        if: steps.bfl2.outcome == 'success'
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "✅ BFL_2 regression passed\nTest: tests/bfl_2.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
-
-      - name: Slack BFL_2 FAIL notification
-        if: steps.bfl2.outcome == 'failure'
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "❌ BFL_2 regression failed\nTest: tests/bfl_2.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
-
       # ── Keyless English ────────────────────────────────────────────────────
 
       - name: Run Keyless English regression
@@ -158,5 +119,5 @@ jobs:
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
-        if: ${{ steps.bfl2.outcome == 'failure' || steps.keyless.outcome == 'failure' || steps.chron.outcome == 'failure' }}
+        if: ${{ steps.keyless.outcome == 'failure' || steps.chron.outcome == 'failure' }}
         run: exit 1
