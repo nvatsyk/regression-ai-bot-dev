@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+﻿import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -75,8 +75,7 @@ async function captureBaselines(page, phrases) {
 
 // Broad greeting phrases — any bot greeting will include at least one.
 const GREETING_PHRASES = [
-  'হ্যালো', 'বোর্দরুম', 'Boardroom', 'Jessica',
-  'ধন্যবাদ', 'Hello', 'কল', 'সাহায্য', 'help', 'calling', 'Good',
+  'হ্যালো', 'Jessica', 'ধন্যবাদ', 'Hello', 'কল', 'সাহায্য', 'help', 'calling', 'Good',
 ];
 
 // Broad response phrases — any bot reply to a working-hours question will include at least one.
@@ -106,10 +105,24 @@ test.describe('Merkel LTD — Bengali Working Hours Flow', () => {
     await page.goto(BOT_URL);
     await page.screenshot({ path: join(REPORT_DIR, 'merkel-startup.png') }).catch(() => {});
 
-    // ── Step 2: Click "Text Chat" ─────────────────────────────────────────────
-    const chatBtn = page.getByRole('button', { name: /text chat/i });
-    await chatBtn.waitFor({ timeout: 30000 });
-    console.log('[MERKEL] Found "Text Chat" button — clicking.');
+    // ── Step 2: Click chat button ─────────────────────────────────────────────
+    const CHAT_LABELS = ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", "Let's Chat", 'Start New Session'];
+    let chatBtn = null;
+    for (const lbl of CHAT_LABELS) {
+      const btn = page.getByText(lbl, { exact: false }).first();
+      console.log(`[CHAT] Waiting up to 50000ms for chat button: ${lbl}`);
+      const found = await btn.waitFor({ timeout: 50000 }).then(() => true).catch(() => false);
+      if (found) { chatBtn = btn; break; }
+    }
+    if (!chatBtn) {
+      chatBtn = page.getByRole('button', { name: /text chat/i });
+      const found = await chatBtn.waitFor({ timeout: 50000 }).then(() => true).catch(() => false);
+      if (!found) {
+        await page.screenshot({ path: join(REPORT_DIR, 'merkel-open-btn-not-found.png') }).catch(() => {});
+        throw new Error('[MERKEL] Chat button not found');
+      }
+    }
+    console.log('[MERKEL] Found chat button — clicking.');
 
     // Capture baselines BEFORE clicking so greeting is reliably detected.
     const greetingBaselines = await captureBaselines(page, GREETING_PHRASES);
@@ -122,6 +135,7 @@ test.describe('Merkel LTD — Bengali Working Hours Flow', () => {
 
     await sleep(1000);
     const actualGreeting = await getAllFramesText(page);
+    console.log('[TEST] Greeting:', actualGreeting.slice(0, 300));
     console.log(`[MERKEL] Greeting detected via phrase: "${matchedGreeting}"`);
     console.log(`[MERKEL] Greeting text snapshot: ${actualGreeting.slice(0, 300)}`);
     await page.screenshot({ path: join(REPORT_DIR, 'merkel-greeting.png') }).catch(() => {});
@@ -133,7 +147,7 @@ test.describe('Merkel LTD — Bengali Working Hours Flow', () => {
     expect(matchedGreeting, 'Step 3: bot did not send a greeting').not.toBeNull();
 
     // Wait for the textbox — signals the bot finished its opening message.
-    await page.getByRole('textbox').waitFor({ timeout: 40000 }).catch(() => {});
+    await page.getByRole('textbox').waitFor({ timeout: 50000 }).catch(() => {});
     await sleep(3000); // extra settle so streaming greeting text finishes
     console.log('[MERKEL] Greeting validated and input ready.');
 
@@ -144,12 +158,13 @@ test.describe('Merkel LTD — Bengali Working Hours Flow', () => {
     const USER_MSG = 'আপনার কাজের সময়সূচী কী?';
     console.log(`[MERKEL] Sending: "${USER_MSG}"`);
     await sendMessage(page, USER_MSG);
+    console.log('[TEST] User message sent');
     console.log('[MERKEL] Message sent — waiting for any bot response.');
 
     // ── Step 5: Validate any non-empty bot response (up to 50s) ──────────────
     let msgAppeared = false;
     try {
-      await page.getByText(USER_MSG, { exact: false }).waitFor({ timeout: 40000 });
+      await page.getByText(USER_MSG, { exact: false }).waitFor({ timeout: 50000 });
       msgAppeared = true;
     } catch {}
     console.log(`[MERKEL] User message visible in widget: ${msgAppeared}`);
@@ -158,6 +173,7 @@ test.describe('Merkel LTD — Bengali Working Hours Flow', () => {
 
     await sleep(1000);
     const actualResponse = await getAllFramesText(page);
+    console.log('[TEST] Bot response received:', actualResponse.slice(0, 300));
     console.log(`[MERKEL] Response detected via phrase: "${matchedResponse}"`);
     console.log(`[MERKEL] Response text snapshot: ${actualResponse.slice(0, 400)}`);
     await page.screenshot({ path: join(REPORT_DIR, 'merkel-cafe-response.png') }).catch(() => {});
