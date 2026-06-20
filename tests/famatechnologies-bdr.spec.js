@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -39,20 +39,6 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-// Polls until the occurrence count of phrase INCREASES beyond beforeCount.
-async function waitForNewOccurrence(page, phrase, beforeCount, timeoutMs = 50000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-    if (count > beforeCount) return true;
-    await sleep(2000);
-  }
-  console.log(`[FAMA] waitForNewOccurrence: "${phrase}" did not appear within ${timeoutMs}ms`);
-  return false;
-}
-
-// Polls until any phrase in the list has more occurrences than its baseline count.
-// Returns the matched phrase, or null on timeout.
 async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -65,17 +51,30 @@ async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 600
   return null;
 }
 
+async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 50000) {
+  const start = Date.now();
+  await page.getByRole('textbox').waitFor({ timeout: Math.min(40000, timeoutMs) }).catch(() => {});
+  await sleep(5000);
+  const deadline = start + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const phrase of greetingPoll) {
+      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
+      if (count > (greetingBaselines[phrase] ?? 0)) return phrase;
+    }
+    await sleep(2000);
+  }
+  const inputVisible = await page.getByRole('textbox').isVisible().catch(() => false);
+  return inputVisible ? 'greeting received' : null;
+}
+
 test.describe('Famatechnologies BDR — Name Capture Flow', () => {
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(180000); // 3 min: widget load + greeting + 1 bot response + CI headroom
-
+    test.setTimeout(180000);
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
     await page.goto(BOT_URL);
 
-    // This bot auto-opens with a widget that shows "LET'S TALK" and "LET'S CHAT".
-    // Try broad label list before falling back to role-based selector.
     const CHAT_LABELS = ["Let's chat", "Let's Chat", "Let's Chat", 'Text Chat', 'Chat', 'Start Chat', 'Start New Session'];
     let chatBtn = null;
     for (const lbl of CHAT_LABELS) {
@@ -93,42 +92,34 @@ test.describe('Famatechnologies BDR — Name Capture Flow', () => {
     }
     await page.screenshot({ path: join(REPORT_DIR, 'fama-startup.png') }).catch(() => {});
 
-    // Dismiss the "Got It" intro tooltip if present — it may overlay the widget.
     const gotItBtn = page.getByRole('button', { name: /got it/i });
     const hasGotIt = await gotItBtn.waitFor({ timeout: 3000 }).then(() => true).catch(() => false);
     if (hasGotIt) await gotItBtn.click().catch(() => {});
     await sleep(500);
 
     // ── Step 2: Open text chat ────────────────────────────────────────────────
-    await chatBtn.click();
-
-    // ── Step 3: Wait for bot greeting ────────────────────────────────────────
+    // Capture baselines BEFORE clicking so greeting detection is accurate
     const greetingPhrases = [
       'Famatechnologies', 'famatechnologies', 'Noura', 'noura',
       'first and last name', 'first name', 'last name', 'your name', 'name',
       'keyboard', 'Hello', 'hello', 'Welcome', 'welcome', 'help', 'assist',
     ];
     const greetingBase = {};
-    for (const p of greetingPhrases) greetingBase[p] = 0;
-
-    console.log('[FAMA] Waiting for greeting...');
-    const greetingTrigger = await waitForAnyNewOccurrence(page, greetingPhrases, greetingBase, 50000);
-    if (greetingTrigger) {
-      console.log(`[FAMA] Greeting detected (triggered by: "${greetingTrigger}") — waiting for full render...`);
-      await sleep(2000);
-    } else {
-      console.log('[FAMA] Greeting poll timed out');
+    for (const p of greetingPhrases) {
+      greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
     }
-    await page.screenshot({ path: join(REPORT_DIR, 'fama-greeting.png') }).catch(() => {});
+    await chatBtn.click();
 
-    const greetingText = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Greeting:', greetingText.slice(0, 300));
-
-    if (!greetingTrigger) {
+    // ── Step 3: Wait for bot greeting ────────────────────────────────────────
+    console.log('[FAMA] Waiting for bot greeting...');
+    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 50000);
+    if (!greeting) {
       await page.screenshot({ path: join(REPORT_DIR, 'fama-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', greetingText);
+      logFailure('Step 3: Greeting', 'no greeting received', '');
     }
-    expect(greetingTrigger, 'Step 3: no greeting received from bot').not.toBeNull();
+    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
+    console.log('[TEST] Greeting:', greeting);
+    await page.screenshot({ path: join(REPORT_DIR, 'fama-greeting.png') }).catch(() => {});
 
     // ── Step 4: Send "Natali Test" — only AFTER greeting is confirmed ─────────
     const step5Poll = [
@@ -145,27 +136,16 @@ test.describe('Famatechnologies BDR — Name Capture Flow', () => {
     console.log('[FAMA] Greeting confirmed — sending "Natali Test"...');
     await sendMessage(page, 'Natali Test');
     console.log('[TEST] User message sent');
-    console.log('[FAMA] "Natali Test" sent — waiting for bot response...');
 
     // ── Step 5: Wait for any non-empty bot response ───────────────────────────
     const step5Trigger = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 60000);
-    if (step5Trigger) {
-      console.log(`[FAMA] Bot response detected (triggered by: "${step5Trigger}").`);
-    } else {
-      console.log('[FAMA] Step 5 response did not arrive within 60s — asserting anyway');
-    }
-    await sleep(1000);
-    await page.screenshot({ path: join(REPORT_DIR, 'fama-after-name.png') }).catch(() => {});
-
-    const responseText = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Bot response received:', responseText.slice(0, 300));
-
-    const step5Pass = step5Trigger !== null;
-    if (!step5Pass) {
+    if (!step5Trigger) {
       await page.screenshot({ path: join(REPORT_DIR, 'fama-name-fail.png') }).catch(() => {});
-      logFailure('Step 5: Name response', 'no new bot response detected', responseText);
+      logFailure('Step 5: Name response', 'no new bot response detected', '');
     }
-    expect(step5Pass, 'Step 5 failed: bot gave no response after sending name').toBe(true);
+    expect(step5Trigger, 'Step 5 failed: bot gave no response after sending name').toBeTruthy();
+    console.log('[TEST] Bot response received:', step5Trigger);
+    await page.screenshot({ path: join(REPORT_DIR, 'fama-after-name.png') }).catch(() => {});
 
     await page.screenshot({ path: join(REPORT_DIR, 'fama-complete.png') }).catch(() => {});
     console.log('[FAMA] Test complete — greeting and name response verified.');

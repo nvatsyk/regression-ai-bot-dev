@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -23,65 +23,6 @@ function logFailure(stepLabel, failedPhrase, pageText) {
   appendFileSync(REPORT_PATH, row);
 }
 
-// Shadow-DOM + multi-frame aware phrase counter.
-async function countPhrase(page, phrase) {
-  for (const frame of page.frames()) {
-    try {
-      const count = await frame.getByText(phrase, { exact: false }).count();
-      if (count > 0) return count;
-    } catch (_) {}
-  }
-  return page.evaluate((p) => {
-    function walk(root) {
-      let text = '';
-      try {
-        const iter = document.createNodeIterator(root, NodeFilter.SHOW_TEXT);
-        let n;
-        while ((n = iter.nextNode())) text += n.textContent + '\n';
-        root.querySelectorAll('*').forEach(el => {
-          if (el.shadowRoot) text += walk(el.shadowRoot);
-        });
-      } catch (_) {}
-      return text;
-    }
-    return walk(document.body).toLowerCase().includes(p.toLowerCase()) ? 1 : 0;
-  }, phrase.toLowerCase()).catch(() => 0);
-}
-
-// Polls until countPhrase exceeds beforeCount.
-async function waitForNewOccurrence(page, phrase, beforeCount, timeoutMs = 50000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const count = await countPhrase(page, phrase);
-    if (count > beforeCount) return true;
-    await sleep(2000);
-  }
-  console.log(`[NL-BDR] waitForNewOccurrence: "${phrase}" did not appear within ${timeoutMs}ms`);
-  return false;
-}
-
-// Polls until any phrase in the list exceeds its baseline count.
-async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const phrase of phrases) {
-      const count = await countPhrase(page, phrase);
-      if (count > (baselines[phrase] ?? 0)) return true;
-    }
-    await sleep(2000);
-  }
-  return false;
-}
-
-// Collects visible text from all frames (widget may live in an iframe).
-async function getAllFrameText(page) {
-  const parts = await Promise.all(
-    page.frames().map(f => f.evaluate(() => document.body.innerText).catch(() => ''))
-  );
-  return parts.join('\n');
-}
-
-// Finds the textbox across all frames, fills it, presses Enter.
 async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   let input = null;
   const deadline = Date.now() + inputWaitMs;
@@ -95,7 +36,6 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
     if (!input) await sleep(1000);
   }
   if (!input) throw new Error(`[NL-BDR] Textbox not found after ${inputWaitMs}ms`);
-
   await input.fill(text);
   await input.press('Enter');
   await sleep(500);
@@ -115,10 +55,37 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
+async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const phrase of phrases) {
+      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
+      if (count > (baselines[phrase] ?? 0)) return phrase;
+    }
+    await sleep(2000);
+  }
+  return null;
+}
+
+async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 50000) {
+  const start = Date.now();
+  await page.getByRole('textbox').waitFor({ timeout: Math.min(40000, timeoutMs) }).catch(() => {});
+  await sleep(5000);
+  const deadline = start + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const phrase of greetingPoll) {
+      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
+      if (count > (greetingBaselines[phrase] ?? 0)) return phrase;
+    }
+    await sleep(2000);
+  }
+  const inputVisible = await page.getByRole('textbox').isVisible().catch(() => false);
+  return inputVisible ? 'greeting received' : null;
+}
+
 test.describe('Nextlevel.ai BDR — Greeting and Name Flow', () => {
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(180000); // 3 min: page load + greeting + name reply + CI headroom
-
+    test.setTimeout(180000);
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
@@ -146,10 +113,7 @@ test.describe('Nextlevel.ai BDR — Greeting and Name Flow', () => {
     }
 
     // Dismiss cookie consent banner if present (intercepts clicks).
-    const cookieSelectors = [
-      '.cmplz-accept', '.cmplz-btn-accept',
-      'button[aria-label*="Accept"]', 'button[aria-label*="accept"]',
-    ];
+    const cookieSelectors = ['.cmplz-accept', '.cmplz-btn-accept', 'button[aria-label*="Accept"]', 'button[aria-label*="accept"]'];
     for (const sel of cookieSelectors) {
       const btn = page.locator(sel).first();
       const has = await btn.waitFor({ timeout: 3000 }).then(() => true).catch(() => false);
@@ -160,37 +124,26 @@ test.describe('Nextlevel.ai BDR — Greeting and Name Flow', () => {
     if (hasGotIt) await gotItBtn.click().catch(() => {});
     await sleep(500);
 
+    // Capture baselines BEFORE clicking so greeting detection is accurate
+    const greetingPhrases = ['Hello', 'Hi', 'welcome', 'name', 'your name', 'may I have your name', 'help', 'assist', 'NextLevel', 'nextlevel', 'Jessica', 'jessica', 'today'];
+    const greetingBase = {};
+    for (const p of greetingPhrases) {
+      greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    }
     await chatBtn.click();
     console.log('[NL-BDR] Clicked chat button — waiting for greeting.');
 
     // ── Step 3: Wait for bot greeting ────────────────────────────────────────
-    const greetingPhrases = [
-      'Hello', 'Hi', 'welcome', 'name', 'your name', 'may I have your name',
-      'help', 'assist', 'NextLevel', 'nextlevel', 'Jessica', 'jessica', 'today',
-    ];
-    const greetingBase = {};
-    for (const p of greetingPhrases) greetingBase[p] = await countPhrase(page, p);
-    const greetingArrived = await waitForAnyNewOccurrence(page, greetingPhrases, greetingBase, 50000);
-    if (!greetingArrived) {
-      console.log('[NL-BDR] Greeting poll timed out');
+    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 50000);
+    if (!greeting) {
+      await page.screenshot({ path: join(REPORT_DIR, 'nl-greeting-fail.png') }).catch(() => {});
+      logFailure('Step 3: Greeting', 'no greeting received', '');
     }
-    await sleep(1000);
-
-    const actualGreeting = await getAllFrameText(page);
-    console.log('[TEST] Greeting:', actualGreeting.slice(0, 300));
-    console.log(`[NL-BDR] Actual greeting text: ${actualGreeting.slice(0, 400)}`);
+    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
+    console.log('[TEST] Greeting:', greeting);
     await page.screenshot({ path: join(REPORT_DIR, 'nl-greeting.png') }).catch(() => {});
 
-    if (!greetingArrived) {
-      await page.screenshot({ path: join(REPORT_DIR, 'nl-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', actualGreeting);
-    }
-    expect(greetingArrived, 'Step 3: no greeting received from bot').toBe(true);
-    console.log('[NL-BDR] Greeting validated.');
-
     // ── Step 4: Send "Natali" ─────────────────────────────────────────────────
-    // The widget uses shadow DOM — countPhrase (shadow walk) is the only reliable
-    // way to detect new content. Capture baselines before sending.
     const replyPoll = [
       'Natali', 'natali',
       'meet you', 'meet', 'nice to meet', 'great to meet', 'pleasure to meet',
@@ -200,29 +153,25 @@ test.describe('Nextlevel.ai BDR — Greeting and Name Flow', () => {
       'help', 'assist', 'question', 'interested',
     ];
     const replyBaselines = {};
-    for (const p of replyPoll) replyBaselines[p] = await countPhrase(page, p);
+    for (const p of replyPoll) {
+      replyBaselines[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    }
 
     await sendMessage(page, 'Natali');
     console.log('[TEST] User message sent');
     console.log('[NL-BDR] Sent "Natali" — waiting for any bot response.');
 
-    // ── Step 5: Validate bot replied with anything non-empty ──────────────────
-    const botResponded = await waitForAnyNewOccurrence(page, replyPoll, replyBaselines, 60000);
-    if (!botResponded) console.log('[NL-BDR] Response poll timed out — asserting anyway');
-    await sleep(1000);
-
-    const actualReply = await getAllFrameText(page);
-    console.log('[TEST] Bot response received:', actualReply.slice(0, 300));
-    console.log(`[NL-BDR] Actual bot reply after "Natali": ${actualReply.slice(0, 400)}`);
+    // ── Step 5: Validate bot replied ─────────────────────────────────────────
+    const botResponse = await waitForAnyNewOccurrence(page, replyPoll, replyBaselines, 60000);
+    if (!botResponse) {
+      await page.screenshot({ path: join(REPORT_DIR, 'nl-name-reply-fail.png') }).catch(() => {});
+      logFailure('Step 5: Bot reply after name', 'no response received', '');
+    }
+    expect(botResponse, 'Step 5: bot did not reply after receiving "Natali"').toBeTruthy();
+    console.log('[TEST] Bot response received:', botResponse);
     await page.screenshot({ path: join(REPORT_DIR, 'nl-after-name.png') }).catch(() => {});
 
-    if (!botResponded) {
-      await page.screenshot({ path: join(REPORT_DIR, 'nl-name-reply-fail.png') }).catch(() => {});
-      logFailure('Step 5: Bot reply after name', 'no response received', actualReply);
-    }
-    expect(botResponded, 'Step 5: bot did not reply after receiving "Natali"').toBe(true);
-    console.log('[NL-BDR] Bot replied after name — test complete.');
-
     await page.screenshot({ path: join(REPORT_DIR, 'nl-complete.png') }).catch(() => {});
+    console.log('[NL-BDR] Bot replied after name — test complete.');
   });
 });

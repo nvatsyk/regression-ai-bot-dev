@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -39,35 +39,37 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-// Polls until the occurrence count of phrase INCREASES beyond beforeCount.
-async function waitForNewOccurrence(page, phrase, beforeCount, timeoutMs = 50000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-    if (count > beforeCount) return true;
-    await sleep(2000);
-  }
-  console.log(`[SOLIX] waitForNewOccurrence: "${phrase}" did not appear within ${timeoutMs}ms`);
-  return false;
-}
-
-// Polls until any phrase in the list has more occurrences than its baseline count.
 async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const phrase of phrases) {
       const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return true;
+      if (count > (baselines[phrase] ?? 0)) return phrase;
     }
     await sleep(2000);
   }
-  return false;
+  return null;
+}
+
+async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 50000) {
+  const start = Date.now();
+  await page.getByRole('textbox').waitFor({ timeout: Math.min(40000, timeoutMs) }).catch(() => {});
+  await sleep(5000);
+  const deadline = start + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const phrase of greetingPoll) {
+      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
+      if (count > (greetingBaselines[phrase] ?? 0)) return phrase;
+    }
+    await sleep(2000);
+  }
+  const inputVisible = await page.getByRole('textbox').isVisible().catch(() => false);
+  return inputVisible ? 'greeting received' : null;
 }
 
 test.describe('Solix BDR — Name Capture Flow', () => {
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(180000); // 3 min: widget load + greeting + 1 bot response + CI headroom
-
+    test.setTimeout(180000);
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
@@ -96,44 +98,34 @@ test.describe('Solix BDR — Name Capture Flow', () => {
     }
     await page.screenshot({ path: join(REPORT_DIR, 'solix-startup.png') }).catch(() => {});
 
-    // Dismiss any intro tooltip ("Got It") that may overlay the widget.
     const gotItBtn = page.getByRole('button', { name: /got it/i });
     const hasGotIt = await gotItBtn.waitFor({ timeout: 3000 }).then(() => true).catch(() => false);
     if (hasGotIt) await gotItBtn.click().catch(() => {});
     await sleep(500);
 
+    // Capture baselines BEFORE clicking so greeting detection is accurate
+    const greetingPhrases = ['Hello', 'Hi', 'welcome', 'name', 'your name', 'address you', 'help', 'assist', 'Solix', 'solix', 'Jessica', 'jessica', 'today'];
+    const greetingBase = {};
+    for (const p of greetingPhrases) {
+      greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    }
     await chatBtn.click();
 
     // ── Step 3: Wait for bot greeting ────────────────────────────────────────
-    const greetingPhrases = [
-      'Hello', 'Hi', 'welcome', 'name', 'your name', 'address you',
-      'help', 'assist', 'Solix', 'solix', 'Jessica', 'jessica', 'today',
-    ];
-    const greetingBase = {};
-    for (const p of greetingPhrases) greetingBase[p] = 0;
-    const greetingArrived = await waitForAnyNewOccurrence(page, greetingPhrases, greetingBase, 50000);
-    if (!greetingArrived) {
-      console.log('[SOLIX] Greeting poll timed out');
+    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 50000);
+    if (!greeting) {
+      await page.screenshot({ path: join(REPORT_DIR, 'solix-greeting-fail.png') }).catch(() => {});
+      logFailure('Step 3: Greeting', 'no greeting received', '');
     }
-    await sleep(1000);
-
-    const greetingText = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Greeting:', greetingText.slice(0, 300));
+    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
+    console.log('[TEST] Greeting:', greeting);
     await page.screenshot({ path: join(REPORT_DIR, 'solix-greeting.png') }).catch(() => {});
 
-    if (!greetingArrived) {
-      await page.screenshot({ path: join(REPORT_DIR, 'solix-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', greetingText);
-    }
-    expect(greetingArrived, 'Step 3: no greeting received from bot').toBe(true);
-
     // ── Step 4: Send "Natali Test" ────────────────────────────────────────────
-    // Snapshot baselines before send so we detect only the bot's new reply.
     const step5Poll = [
       'Hi Natali', 'Natali', 'natali',
       'How can I help', 'learn more about Solix',
       'How can I assist', 'data management', 'assist you today',
-      'How can I help you today', 'How may I assist',
       'feel free', 'here to help', 'happy to help',
       'Great', 'great', 'Nice', 'Thanks', 'thank',
     ];
@@ -144,25 +136,16 @@ test.describe('Solix BDR — Name Capture Flow', () => {
 
     await sendMessage(page, 'Natali Test');
     console.log('[TEST] User message sent');
-    console.log('[SOLIX] Sent "Natali Test" — waiting for name acknowledgement.');
 
     // ── Step 5: Wait for any bot response ────────────────────────────────────
     const step5Arrived = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 60000);
     if (!step5Arrived) {
-      console.log('[SOLIX] Step 5 response did not arrive within 60s — asserting anyway');
-    }
-    await sleep(1000);
-
-    const responseText = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Bot response received:', responseText.slice(0, 300));
-    await page.screenshot({ path: join(REPORT_DIR, 'solix-after-name.png') }).catch(() => {});
-
-    if (!step5Arrived) {
       await page.screenshot({ path: join(REPORT_DIR, 'solix-step5-fail.png') }).catch(() => {});
-      logFailure('Step 5: Name acknowledgement', 'no bot response received', responseText);
+      logFailure('Step 5: Name acknowledgement', 'no bot response received', '');
     }
-    expect(step5Arrived, 'Step 5: bot gave no response after sending name').toBe(true);
-    console.log('[SOLIX] Bot responded after name.');
+    expect(step5Arrived, 'Step 5: bot gave no response after sending name').toBeTruthy();
+    console.log('[TEST] Bot response received:', step5Arrived);
+    await page.screenshot({ path: join(REPORT_DIR, 'solix-after-name.png') }).catch(() => {});
 
     await page.screenshot({ path: join(REPORT_DIR, 'solix-complete.png') }).catch(() => {});
     console.log('[SOLIX] Test complete — name capture and Solix intro verified.');

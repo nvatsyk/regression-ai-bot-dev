@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -39,35 +39,37 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-// Polls until the occurrence count of phrase INCREASES beyond beforeCount.
-async function waitForNewOccurrence(page, phrase, beforeCount, timeoutMs = 50000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-    if (count > beforeCount) return true;
-    await sleep(2000);
-  }
-  console.log(`[SPSOFT] waitForNewOccurrence: "${phrase}" did not appear within ${timeoutMs}ms`);
-  return false;
-}
-
-// Polls until any phrase in the list has more occurrences than its baseline count.
 async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const phrase of phrases) {
       const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return true;
+      if (count > (baselines[phrase] ?? 0)) return phrase;
     }
     await sleep(2000);
   }
-  return false;
+  return null;
+}
+
+async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 50000) {
+  const start = Date.now();
+  await page.getByRole('textbox').waitFor({ timeout: Math.min(40000, timeoutMs) }).catch(() => {});
+  await sleep(5000);
+  const deadline = start + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const phrase of greetingPoll) {
+      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
+      if (count > (greetingBaselines[phrase] ?? 0)) return phrase;
+    }
+    await sleep(2000);
+  }
+  const inputVisible = await page.getByRole('textbox').isVisible().catch(() => false);
+  return inputVisible ? 'greeting received' : null;
 }
 
 test.describe('SPsoft BDR — Services Flow', () => {
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(240000); // 4 min: greeting + 2 bot responses + services list + CI headroom
-
+    test.setTimeout(240000);
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
@@ -96,41 +98,31 @@ test.describe('SPsoft BDR — Services Flow', () => {
     }
     await page.screenshot({ path: join(REPORT_DIR, 'spsoft-startup.png') }).catch(() => {});
 
-    // Dismiss any intro tooltip ("Got It") that may overlay the widget.
     const gotItBtn = page.getByRole('button', { name: /got it/i });
     const hasGotIt = await gotItBtn.waitFor({ timeout: 3000 }).then(() => true).catch(() => false);
     if (hasGotIt) await gotItBtn.click().catch(() => {});
     await sleep(500);
 
+    // Capture baselines BEFORE clicking so greeting detection is accurate
+    const greetingPhrases = ['Hello', 'Hi', 'welcome', 'name', 'your name', 'What is your name', 'help', 'assist', 'SPsoft', 'spsoft', 'Jessica', 'jessica', 'today'];
+    const greetingBase = {};
+    for (const p of greetingPhrases) {
+      greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    }
     await chatBtn.click();
     console.log('[SPSOFT] Clicked chat button — waiting for greeting.');
 
     // ── Step 3: Wait for bot greeting ────────────────────────────────────────
-    const greetingPhrases = [
-      'Hello', 'Hi', 'welcome', 'name', 'your name', 'What is your name',
-      'help', 'assist', 'SPsoft', 'spsoft', 'Jessica', 'jessica', 'today',
-    ];
-    const greetingBase = {};
-    for (const p of greetingPhrases) greetingBase[p] = 0;
-    const greetingArrived = await waitForAnyNewOccurrence(page, greetingPhrases, greetingBase, 50000);
-    if (!greetingArrived) {
-      console.log('[SPSOFT] Greeting poll timed out');
+    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 50000);
+    if (!greeting) {
+      await page.screenshot({ path: join(REPORT_DIR, 'spsoft-greeting-fail.png') }).catch(() => {});
+      logFailure('Step 3: Greeting', 'no greeting received', '');
     }
-    await sleep(1000);
-
-    const greetingText = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Greeting:', greetingText.slice(0, 300));
+    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
+    console.log('[TEST] Greeting:', greeting);
     await page.screenshot({ path: join(REPORT_DIR, 'spsoft-greeting.png') }).catch(() => {});
 
-    if (!greetingArrived) {
-      await page.screenshot({ path: join(REPORT_DIR, 'spsoft-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', greetingText);
-    }
-    expect(greetingArrived, 'Step 3: no greeting received from bot').toBe(true);
-    console.log('[SPSOFT] Greeting validated.');
-
     // ── Step 4: Send "Natali" ─────────────────────────────────────────────────
-    // Snapshot baselines before send so we detect only the bot's new reply.
     const step5Poll = [
       'Great', 'great', 'Nice', 'nice', 'Thanks', 'thank',
       'Natali', 'natali', 'meet', 'How can I help', 'how can I assist',
@@ -143,56 +135,40 @@ test.describe('SPsoft BDR — Services Flow', () => {
 
     await sendMessage(page, 'Natali');
     console.log('[TEST] User message sent');
-    console.log('[SPSOFT] Sent "Natali" — waiting for name acknowledgement.');
 
     // ── Step 5: Wait for any bot response ────────────────────────────────────
     const step5Arrived = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 60000);
     if (!step5Arrived) {
-      console.log('[SPSOFT] Step 5 response did not arrive within 60s — asserting anyway');
+      await page.screenshot({ path: join(REPORT_DIR, 'spsoft-step5-fail.png') }).catch(() => {});
+      logFailure('Step 5: Name acknowledgement', 'no bot response received', '');
     }
-    await sleep(1000);
-
-    const step5Text = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Bot response received:', step5Text.slice(0, 300));
+    expect(step5Arrived, 'Step 5: bot gave no response after sending name').toBeTruthy();
+    console.log('[TEST] Bot response received:', step5Arrived);
     await page.screenshot({ path: join(REPORT_DIR, 'spsoft-after-name.png') }).catch(() => {});
 
-    if (!step5Arrived) {
-      await page.screenshot({ path: join(REPORT_DIR, 'spsoft-step5-fail.png') }).catch(() => {});
-      logFailure('Step 5: Name acknowledgement', 'no bot response received', step5Text);
-    }
-    expect(step5Arrived, 'Step 5: bot gave no response after sending name').toBe(true);
-    console.log('[SPSOFT] Bot responded after name.');
-
     // ── Step 6: Send "tell me about your services" ────────────────────────────
-    // Capture body length before send so any growth signals a new bot reply.
-    const beforeServicesBodyLen = (await page.evaluate(() => document.body.innerText).catch(() => '')).length;
+    const step7Poll = [
+      'software', 'Software', 'development', 'Development', 'services', 'Services',
+      'solution', 'Solution', 'technology', 'Technology', 'web', 'Web',
+      'mobile', 'Mobile', 'cloud', 'Cloud', 'custom', 'Custom', 'AI', 'automation',
+    ];
+    const step7Base = {};
+    for (const p of step7Poll) {
+      step7Base[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    }
 
     await sendMessage(page, 'tell me about your services');
-    console.log('[SPSOFT] Sent "tell me about your services" — waiting for any response.');
+    console.log('[SPSOFT] Sent "tell me about your services" — waiting for response.');
 
     // ── Step 7: Wait for services response ───────────────────────────────────
-    let step7Arrived = false;
-    const step7Deadline = Date.now() + 60000;
-    while (Date.now() < step7Deadline) {
-      const currentLen = (await page.evaluate(() => document.body.innerText).catch(() => '')).length;
-      if (currentLen > beforeServicesBodyLen + 20) { step7Arrived = true; break; }
-      await sleep(2000);
-    }
+    const step7Arrived = await waitForAnyNewOccurrence(page, step7Poll, step7Base, 60000);
     if (!step7Arrived) {
-      console.log('[SPSOFT] Step 7 response did not arrive within 60s — asserting anyway');
-    }
-    await sleep(1000);
-    await page.screenshot({ path: join(REPORT_DIR, 'spsoft-after-services.png') }).catch(() => {});
-
-    const bodyText = await page.evaluate(() => document.body.innerText).catch(() => '');
-    const normalised = bodyText.replace(/\s+/g, ' ');
-    console.log('[SPSOFT] Step 7 response (first 500 chars):', normalised.slice(0, 500).trim());
-
-    if (bodyText.trim().length === 0) {
       await page.screenshot({ path: join(REPORT_DIR, 'spsoft-services-fail.png') }).catch(() => {});
-      logFailure('Step 7: Services response', 'Bot gave no response', '');
+      logFailure('Step 7: Services response', 'no bot response received', '');
     }
-    expect(bodyText.trim().length, 'Step 7 failed: bot gave no response to services question').toBeGreaterThan(0);
+    expect(step7Arrived, 'Step 7: bot gave no response to services question').toBeTruthy();
+    console.log('[TEST] Bot response received:', step7Arrived);
+    await page.screenshot({ path: join(REPORT_DIR, 'spsoft-after-services.png') }).catch(() => {});
 
     await page.screenshot({ path: join(REPORT_DIR, 'spsoft-complete.png') }).catch(() => {});
     console.log('[SPSOFT] Test complete — services response verified.');

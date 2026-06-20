@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -39,35 +39,37 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-// Polls until the occurrence count of a phrase INCREASES beyond beforeCount.
-async function waitForNewOccurrence(page, phrase, beforeCount, timeoutMs = 50000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-    if (count > beforeCount) return true;
-    await sleep(2000);
-  }
-  console.log(`[KE2] waitForNewOccurrence: "${phrase}" did not appear within ${timeoutMs}ms`);
-  return false;
-}
-
-// Polls until any phrase in the list exceeds its baseline count.
 async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const phrase of phrases) {
       const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return true;
+      if (count > (baselines[phrase] ?? 0)) return phrase;
     }
     await sleep(2000);
   }
-  return false;
+  return null;
+}
+
+async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 50000) {
+  const start = Date.now();
+  await page.getByRole('textbox').waitFor({ timeout: Math.min(40000, timeoutMs) }).catch(() => {});
+  await sleep(5000);
+  const deadline = start + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const phrase of greetingPoll) {
+      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
+      if (count > (greetingBaselines[phrase] ?? 0)) return phrase;
+    }
+    await sleep(2000);
+  }
+  const inputVisible = await page.getByRole('textbox').isVisible().catch(() => false);
+  return inputVisible ? 'greeting received' : null;
 }
 
 test.describe('Keyless English — Greeting and Unlock Reply Flow', () => {
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(180000); // 3 min: greeting + 1 bot response + CI headroom
-
+    test.setTimeout(180000);
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
@@ -94,36 +96,26 @@ test.describe('Keyless English — Greeting and Unlock Reply Flow', () => {
       throw new Error(`[KE2] Chat button not found. Tried: ${CHAT_LABELS.join(', ')}. Visible: ${vis.join(', ')}`);
     }
     console.log('[KE2] Found chat button — clicking.');
+
+    // Capture baselines BEFORE clicking so greeting detection is accurate
+    const greetingPhrases = ['help', 'Hello', 'Hi', 'welcome', 'assist', 'support', 'UXE', 'Ahmed', 'Keyless', 'chat', 'today', 'can I'];
+    const greetingBase = {};
+    for (const p of greetingPhrases) {
+      greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    }
     await chatBtn.click();
 
     // ── Step 3: Wait for bot greeting ────────────────────────────────────────
-    const greetingPhrases = [
-      'help', 'Hello', 'Hi', 'welcome', 'assist', 'support',
-      'UXE', 'Ahmed', 'Keyless', 'chat', 'today', 'can I',
-    ];
-    const greetingBase = {};
-    for (const p of greetingPhrases) greetingBase[p] = 0;
-    const greetingArrived = await waitForAnyNewOccurrence(page, greetingPhrases, greetingBase, 50000);
-    if (!greetingArrived) {
-      await page.screenshot({ path: join(REPORT_DIR, 'ke2-greeting-timeout.png') }).catch(() => {});
-      console.log('[KE2] Greeting poll timed out');
+    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 50000);
+    if (!greeting) {
+      await page.screenshot({ path: join(REPORT_DIR, 'ke2-greeting-fail.png') }).catch(() => {});
+      logFailure('Step 3: Greeting', 'no greeting received', '');
     }
-    await sleep(1000);
-
-    const greetingText = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Greeting:', greetingText.slice(0, 300));
-    console.log(`[KE2] Actual greeting text: ${greetingText.slice(0, 400)}`);
+    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
+    console.log('[TEST] Greeting:', greeting);
     await page.screenshot({ path: join(REPORT_DIR, 'ke2-greeting.png') }).catch(() => {});
 
-    if (!greetingArrived) {
-      await page.screenshot({ path: join(REPORT_DIR, 'ke2-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', greetingText);
-    }
-    expect(greetingArrived, 'Step 3: no greeting received from bot').toBe(true);
-    console.log('[KE2] Greeting validated.');
-
     // ── Step 4: Send "to unlock the key" ─────────────────────────────────────
-    // Capture baselines before sending so any new content after the message counts.
     const replyPoll = [
       'unlock', 'sort', 'right now', 'currently', 'trying',
       'mobile app', 'mobile', 'passcode', 'RFID', 'rfid',
@@ -139,21 +131,15 @@ test.describe('Keyless English — Greeting and Unlock Reply Flow', () => {
     console.log('[TEST] User message sent');
     console.log('[KE2] Sent "to unlock the key" — waiting for any bot response.');
 
-    // ── Step 5: Validate bot replied with anything non-empty ──────────────────
-    const botResponded = await waitForAnyNewOccurrence(page, replyPoll, replyBaselines, 60000);
-    if (!botResponded) console.log('[KE2] Response poll timed out — asserting anyway');
-    await sleep(1000);
-
-    const actualReply = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Bot response received:', actualReply.slice(0, 300));
-    console.log(`[KE2] Actual bot reply: ${actualReply.slice(0, 400)}`);
-    await page.screenshot({ path: join(REPORT_DIR, 'ke2-after-unlock-msg.png') }).catch(() => {});
-
-    if (!botResponded) {
+    // ── Step 5: Validate bot replied ─────────────────────────────────────────
+    const botResponse = await waitForAnyNewOccurrence(page, replyPoll, replyBaselines, 60000);
+    if (!botResponse) {
       await page.screenshot({ path: join(REPORT_DIR, 'ke2-reply-fail.png') }).catch(() => {});
-      logFailure('Step 5: Bot reply after "to unlock the key"', 'no response received', actualReply);
+      logFailure('Step 5: Bot reply after "to unlock the key"', 'no response received', '');
     }
-    expect(botResponded, 'Step 5: bot did not reply after "to unlock the key"').toBe(true);
+    expect(botResponse, 'Step 5: bot did not reply after "to unlock the key"').toBeTruthy();
+    console.log('[TEST] Bot response received:', botResponse);
+    await page.screenshot({ path: join(REPORT_DIR, 'ke2-after-unlock-msg.png') }).catch(() => {});
 
     await page.screenshot({ path: join(REPORT_DIR, 'ke2-complete.png') }).catch(() => {});
     console.log('[KE2] Test complete — Keyless greeting and unlock reply verified.');

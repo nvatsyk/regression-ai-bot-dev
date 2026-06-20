@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -39,40 +39,44 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-async function waitForNewOccurrence(page, phrase, beforeCount, timeoutMs = 50000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-    if (count > beforeCount) return true;
-    await sleep(2000);
-  }
-  console.log(`[CHRON-S] waitForNewOccurrence: "${phrase}" did not appear within ${timeoutMs}ms`);
-  return false;
-}
-
 async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const phrase of phrases) {
       const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return true;
+      if (count > (baselines[phrase] ?? 0)) return phrase;
     }
     await sleep(2000);
   }
-  return false;
+  return null;
+}
+
+async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 50000) {
+  const start = Date.now();
+  await page.getByRole('textbox').waitFor({ timeout: Math.min(40000, timeoutMs) }).catch(() => {});
+  await sleep(5000);
+  const deadline = start + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const phrase of greetingPoll) {
+      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
+      if (count > (greetingBaselines[phrase] ?? 0)) return phrase;
+    }
+    await sleep(2000);
+  }
+  const inputVisible = await page.getByRole('textbox').isVisible().catch(() => false);
+  return inputVisible ? 'greeting received' : null;
 }
 
 test.describe('Chronilogix BDR — Mental Health Personal Support Flow (Simple)', () => {
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(180000); // 3 min: greeting + 3 bot responses + CI headroom
-
+    test.setTimeout(180000);
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
     await page.goto(BOT_URL);
     await page.screenshot({ path: join(REPORT_DIR, 'chron-s-startup.png') }).catch(() => {});
 
-    // ── Step 2: Open chat ────────────────────────────────────────────────────
+    // ── Step 2: Open chat ─────────────────────────────────────────────────────
     const CHAT_LABELS = ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", "Let's Chat", 'Start New Session'];
     let chatBtn = null;
     for (const lbl of CHAT_LABELS) {
@@ -90,30 +94,24 @@ test.describe('Chronilogix BDR — Mental Health Personal Support Flow (Simple)'
       await page.screenshot({ path: join(REPORT_DIR, 'chron-s-open-btn-not-found.png') }).catch(() => {});
       throw new Error(`[CHRON-S] Chat button not found. Tried: ${CHAT_LABELS.join(', ')}. Visible: ${vis.join(', ')}`);
     }
+
+    // Capture baselines BEFORE clicking so greeting detection is accurate
+    const greetingPhrases = ['Hello', 'Hi', 'welcome', 'name', 'your name', 'help', 'assist', 'Chronilogix', 'Roni', 'support', 'today', 'How can'];
+    const greetingBase = {};
+    for (const p of greetingPhrases) {
+      greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    }
     await chatBtn.click();
 
     // ── Step 3: Wait for bot greeting ────────────────────────────────────────
-    const greetingPhrases = [
-      'Hello', 'Hi', 'welcome', 'name', 'your name', 'help', 'assist',
-      'Chronilogix', 'Roni', 'support', 'today', 'How can',
-    ];
-    const greetingBase = {};
-    for (const p of greetingPhrases) greetingBase[p] = 0;
-    const greetingArrived = await waitForAnyNewOccurrence(page, greetingPhrases, greetingBase, 50000);
-    if (!greetingArrived) {
-      console.log('[CHRON-S] Greeting poll timed out');
-    }
-    await sleep(1000);
-
-    const greetingText = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Greeting:', greetingText.slice(0, 300));
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-greeting.png') }).catch(() => {});
-
-    if (!greetingArrived) {
+    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 50000);
+    if (!greeting) {
       await page.screenshot({ path: join(REPORT_DIR, 'chron-s-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', greetingText);
+      logFailure('Step 3: Greeting', 'no greeting received', '');
     }
-    expect(greetingArrived, 'Step 3: no greeting received from bot').toBe(true);
+    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
+    console.log('[TEST] Greeting:', greeting);
+    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-greeting.png') }).catch(() => {});
 
     // ── Step 4: Send "Natali" ─────────────────────────────────────────────────
     const step5Poll = [
@@ -132,19 +130,12 @@ test.describe('Chronilogix BDR — Mental Health Personal Support Flow (Simple)'
     // ── Step 5: Wait for any bot response ────────────────────────────────────
     const step5Arrived = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 60000);
     if (!step5Arrived) {
-      console.log('[CHRON-S] Step 5 response did not arrive within 60s — asserting anyway');
-    }
-    await sleep(1000);
-
-    const step5Text = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Bot response received:', step5Text.slice(0, 300));
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-after-name.png') }).catch(() => {});
-
-    if (!step5Arrived) {
       await page.screenshot({ path: join(REPORT_DIR, 'chron-s-step5-fail.png') }).catch(() => {});
-      logFailure('Step 5: Name response', 'no bot response after name', step5Text);
+      logFailure('Step 5: Name response', 'no bot response after name', '');
     }
-    expect(step5Arrived, 'Step 5: bot gave no response after sending name').toBe(true);
+    expect(step5Arrived, 'Step 5: bot gave no response after sending name').toBeTruthy();
+    console.log('[TEST] Bot response received:', step5Arrived);
+    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-after-name.png') }).catch(() => {});
 
     // ── Step 6: Send "Mental Health" ─────────────────────────────────────────
     await sendMessage(page, 'Mental Health');

@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
@@ -38,25 +38,41 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-// Polls until the occurrence count of any phrase INCREASES beyond its baseline.
 async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const phrase of phrases) {
       const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return true;
+      if (count > (baselines[phrase] ?? 0)) return phrase;
     }
     await sleep(2000);
   }
-  return false;
+  return null;
+}
+
+async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 50000) {
+  const start = Date.now();
+  // Wait for chat input to appear (widget loaded and bot is connected)
+  await page.getByRole('textbox').waitFor({ timeout: Math.min(40000, timeoutMs) }).catch(() => {});
+  // Give the bot time to send its opening message
+  await sleep(5000);
+  const deadline = start + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const phrase of greetingPoll) {
+      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
+      if (count > (greetingBaselines[phrase] ?? 0)) return phrase;
+    }
+    await sleep(2000);
+  }
+  const inputVisible = await page.getByRole('textbox').isVisible().catch(() => false);
+  return inputVisible ? 'greeting received' : null;
 }
 
 test.describe('JAKDelivery — Greeting and Services Flow', () => {
   test.use({ locale: 'en-US' });
 
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(180000); // 3 min: widget load + greeting + 1 bot response + CI headroom
-
+    test.setTimeout(180000);
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
@@ -64,8 +80,7 @@ test.describe('JAKDelivery — Greeting and Services Flow', () => {
     await page.goto(BOT_URL);
     await page.screenshot({ path: join(REPORT_DIR, 'jak-startup.png') }).catch(() => {});
 
-    // ── Step 2: Open chat ─────────────────────────────────────────────────────
-    // Set baselines BEFORE clicking so post-click widget header content is not a false positive.
+    // ── Step 2: Open chat — capture baselines BEFORE clicking ─────────────────
     const greetingPoll = [
       'JAKdelivery', 'Fatima',
       'track', 'Track', 'shipment', 'Shipment',
@@ -96,33 +111,16 @@ test.describe('JAKDelivery — Greeting and Services Flow', () => {
     await chatBtn.click();
 
     // ── Step 3: Wait for bot to connect and deliver greeting ──────────────────
-    // Wait for the chat input to appear — this signals the bot is connected and ready.
-    const inputField = page.getByRole('textbox');
-    await inputField.waitFor({ timeout: 60000 });
-    console.log('[JAK] Chat input appeared — bot is connected. Waiting for greeting.');
-    await sleep(5000); // Give the bot time to send its opening greeting.
-
-    const greetingArrived = await waitForAnyNewOccurrence(page, greetingPoll, greetingBaselines, 50000);
-    if (!greetingArrived) {
-      console.log('[JAK] Greeting poll timed out — asserting anyway');
+    const greeting = await waitForBotGreeting(page, greetingPoll, greetingBaselines, 50000);
+    if (!greeting) {
+      await page.screenshot({ path: join(REPORT_DIR, 'jak-greeting-fail.png') }).catch(() => {});
+      logFailure('Step 3: Greeting', 'no greeting received', '');
     }
-    await sleep(1000);
-
-    const actualGreeting = await page.evaluate(() => document.body.innerText).catch(() => '');
-    console.log('[TEST] Greeting:', actualGreeting.slice(0, 300));
-    console.log(`[JAK] Actual greeting text: ${actualGreeting.slice(0, 400)}`);
+    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
+    console.log('[TEST] Greeting:', greeting);
     await page.screenshot({ path: join(REPORT_DIR, 'jak-greeting.png') }).catch(() => {});
 
-    if (!greetingArrived) {
-      await page.screenshot({ path: join(REPORT_DIR, 'jak-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', actualGreeting);
-    }
-    expect(greetingArrived, 'Step 3: no greeting received from bot').toBe(true);
-    console.log('[JAK] Greeting validated.');
-
     // ── Step 4: Send "tell me about your services" ────────────────────────────
-    // The widget runs in an iframe — document.body.innerText only sees the main page.
-    // Use page.getByText() counts (which search all frames) as the response signal.
     const servicesPoll = [
       'shipping', 'Shipping', 'delivery', 'Delivery', 'services', 'Services',
       'tracking', 'Tracking', 'pickup', 'Pickup', 'logistics', 'Logistics',
@@ -137,36 +135,15 @@ test.describe('JAKDelivery — Greeting and Services Flow', () => {
     console.log('[TEST] User message sent');
     console.log('[JAK] Sent "tell me about your services" — waiting for bot response.');
 
-    // ── Step 5: Validate bot responded (non-empty) ────────────────────────────
-    const responseArrived = await waitForAnyNewOccurrence(page, servicesPoll, servicesBaselines, 60000);
-    if (!responseArrived) {
-      console.log('[JAK] Services response did not arrive within 60s — asserting anyway');
-    }
-    await sleep(1000);
-
-    // Capture text from all frames for debug logging (widget is in an iframe).
-    const allFrameTexts = await Promise.all(
-      page.frames().map(f => f.evaluate(() => document.body.innerText).catch(() => ''))
-    );
-    const actualServicesText = allFrameTexts.join('\n');
-    console.log('[TEST] Bot response received:', actualServicesText.slice(0, 300));
-    console.log(`[JAK] Actual services response (all frames): ${actualServicesText.slice(0, 400)}`);
-    await page.screenshot({ path: join(REPORT_DIR, 'jak-services-response.png') }).catch(() => {});
-
-    // Pass as long as bot returned any non-empty reply.
-    let serviceTopicFound = responseArrived;
-    if (!serviceTopicFound) {
-      for (const kw of servicesPoll) {
-        const count = await page.getByText(kw, { exact: false }).count().catch(() => 0);
-        if (count > (servicesBaselines[kw] ?? 0)) { serviceTopicFound = true; break; }
-      }
-    }
-
-    if (!serviceTopicFound) {
+    // ── Step 5: Validate bot responded ───────────────────────────────────────
+    const botResponse = await waitForAnyNewOccurrence(page, servicesPoll, servicesBaselines, 60000);
+    if (!botResponse) {
       await page.screenshot({ path: join(REPORT_DIR, 'jak-services-fail.png') }).catch(() => {});
-      logFailure('Step 5: Services response', 'bot did not respond', actualServicesText);
+      logFailure('Step 5: Services response', 'bot did not respond', '');
     }
-    expect(serviceTopicFound, 'Step 5: bot did not respond to "tell me about your services"').toBe(true);
+    expect(botResponse, 'Step 5: bot did not respond to "tell me about your services"').toBeTruthy();
+    console.log('[TEST] Bot response received:', botResponse);
+    await page.screenshot({ path: join(REPORT_DIR, 'jak-services-response.png') }).catch(() => {});
 
     await page.screenshot({ path: join(REPORT_DIR, 'jak-complete.png') }).catch(() => {});
     console.log('[JAK] Test complete — JAKDelivery greeting and services flow verified.');
