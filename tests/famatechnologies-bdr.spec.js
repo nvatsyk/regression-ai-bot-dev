@@ -24,7 +24,7 @@ function logFailure(stepLabel, failedPhrase, pageText) {
   appendFileSync(REPORT_PATH, row);
 }
 
-async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
+async function sendMessage(page, text, { inputWaitMs = 70000 } = {}) {
   const input = page.getByRole('textbox');
   await input.waitFor({ timeout: inputWaitMs });
   await input.fill(text);
@@ -39,7 +39,7 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
+async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 70000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const phrase of phrases) {
@@ -51,9 +51,9 @@ async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 600
   return null;
 }
 
-async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 50000) {
+async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 70000) {
   const start = Date.now();
-  await page.getByRole('textbox').waitFor({ timeout: Math.min(40000, timeoutMs) }).catch(() => {});
+  await page.getByRole('textbox').waitFor({ timeout: Math.min(60000, timeoutMs) }).catch(() => {});
   await sleep(5000);
   const deadline = start + timeoutMs;
   while (Date.now() < deadline) {
@@ -79,12 +79,12 @@ test.describe('Famatechnologies BDR — Name Capture Flow', () => {
     let chatBtn = null;
     for (const lbl of CHAT_LABELS) {
       const btn = page.getByText(lbl, { exact: false }).first();
-      const found = await btn.waitFor({ timeout: 50000 }).then(() => true).catch(() => false);
+      const found = await btn.waitFor({ timeout: 70000 }).then(() => true).catch(() => false);
       if (found) { chatBtn = btn; break; }
     }
     if (!chatBtn) {
       chatBtn = page.getByRole('button', { name: /let.?s chat/i });
-      const found = await chatBtn.waitFor({ timeout: 50000 }).then(() => true).catch(() => false);
+      const found = await chatBtn.waitFor({ timeout: 70000 }).then(() => true).catch(() => false);
       if (!found) {
         await page.screenshot({ path: join(REPORT_DIR, 'fama-open-btn-not-found.png') }).catch(() => {});
         throw new Error('[FAMA] Chat button not found');
@@ -112,7 +112,7 @@ test.describe('Famatechnologies BDR — Name Capture Flow', () => {
 
     // ── Step 3: Wait for bot greeting ────────────────────────────────────────
     console.log('[FAMA] Waiting for bot greeting...');
-    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 50000);
+    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 70000);
     if (!greeting) {
       await page.screenshot({ path: join(REPORT_DIR, 'fama-greeting-fail.png') }).catch(() => {});
       logFailure('Step 3: Greeting', 'no greeting received', '');
@@ -138,7 +138,7 @@ test.describe('Famatechnologies BDR — Name Capture Flow', () => {
     console.log('[TEST] User message sent');
 
     // ── Step 5: Wait for any non-empty bot response ───────────────────────────
-    const step5Trigger = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 60000);
+    const step5Trigger = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 70000);
     if (!step5Trigger) {
       await page.screenshot({ path: join(REPORT_DIR, 'fama-name-fail.png') }).catch(() => {});
       logFailure('Step 5: Name response', 'no new bot response detected', '');

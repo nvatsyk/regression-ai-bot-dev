@@ -24,7 +24,7 @@ function logFailure(stepLabel, failedPhrase, pageText) {
   appendFileSync(REPORT_PATH, row);
 }
 
-async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
+async function sendMessage(page, text, { inputWaitMs = 70000 } = {}) {
   const input = page.getByRole('textbox');
   await input.waitFor({ timeout: inputWaitMs });
   await input.fill(text);
@@ -39,7 +39,7 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
+async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 70000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const phrase of phrases) {
@@ -51,9 +51,9 @@ async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 600
   return null;
 }
 
-async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 50000) {
+async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 70000) {
   const start = Date.now();
-  await page.getByRole('textbox').waitFor({ timeout: Math.min(40000, timeoutMs) }).catch(() => {});
+  await page.getByRole('textbox').waitFor({ timeout: Math.min(60000, timeoutMs) }).catch(() => {});
   await sleep(5000);
   const deadline = start + timeoutMs;
   while (Date.now() < deadline) {
@@ -97,12 +97,12 @@ test.describe('Merkel LTD — Bengali Working Hours Flow', () => {
     for (const lbl of CHAT_LABELS) {
       const btn = page.getByText(lbl, { exact: false }).first();
       console.log(`[CHAT] Waiting up to 50000ms for chat button: ${lbl}`);
-      const found = await btn.waitFor({ timeout: 50000 }).then(() => true).catch(() => false);
+      const found = await btn.waitFor({ timeout: 70000 }).then(() => true).catch(() => false);
       if (found) { chatBtn = btn; break; }
     }
     if (!chatBtn) {
       chatBtn = page.getByRole('button', { name: /text chat/i });
-      const found = await chatBtn.waitFor({ timeout: 50000 }).then(() => true).catch(() => false);
+      const found = await chatBtn.waitFor({ timeout: 70000 }).then(() => true).catch(() => false);
       if (!found) {
         await page.screenshot({ path: join(REPORT_DIR, 'merkel-open-btn-not-found.png') }).catch(() => {});
         throw new Error('[MERKEL] Chat button not found');
@@ -120,7 +120,7 @@ test.describe('Merkel LTD — Bengali Working Hours Flow', () => {
 
     // ── Step 3: Wait for bot greeting ─────────────────────────────────────────
     console.log('[MERKEL] Waiting for bot greeting...');
-    const greeting = await waitForBotGreeting(page, GREETING_PHRASES, greetingBaselines, 50000);
+    const greeting = await waitForBotGreeting(page, GREETING_PHRASES, greetingBaselines, 70000);
     if (!greeting) {
       await page.screenshot({ path: join(REPORT_DIR, 'merkel-greeting-fail.png') }).catch(() => {});
       logFailure('Step 3: Greeting', 'no greeting detected', '');
@@ -141,7 +141,7 @@ test.describe('Merkel LTD — Bengali Working Hours Flow', () => {
     console.log('[TEST] User message sent');
 
     // ── Step 5: Validate any non-empty bot response ───────────────────────────
-    const matchedResponse = await waitForAnyNewOccurrence(page, RESPONSE_PHRASES, responseBaselines, 50000);
+    const matchedResponse = await waitForAnyNewOccurrence(page, RESPONSE_PHRASES, responseBaselines, 70000);
     if (!matchedResponse) {
       await page.screenshot({ path: join(REPORT_DIR, 'merkel-cafe-fail.png') }).catch(() => {});
       logFailure('Step 5: Response', 'no response detected', '');

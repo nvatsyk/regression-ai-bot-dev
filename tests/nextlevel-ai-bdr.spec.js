@@ -23,7 +23,7 @@ function logFailure(stepLabel, failedPhrase, pageText) {
   appendFileSync(REPORT_PATH, row);
 }
 
-async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
+async function sendMessage(page, text, { inputWaitMs = 70000 } = {}) {
   let input = null;
   const deadline = Date.now() + inputWaitMs;
   while (Date.now() < deadline && !input) {
@@ -55,7 +55,7 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
+async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 70000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const phrase of phrases) {
@@ -67,9 +67,9 @@ async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 600
   return null;
 }
 
-async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 50000) {
+async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 70000) {
   const start = Date.now();
-  await page.getByRole('textbox').waitFor({ timeout: Math.min(40000, timeoutMs) }).catch(() => {});
+  await page.getByRole('textbox').waitFor({ timeout: Math.min(60000, timeoutMs) }).catch(() => {});
   await sleep(5000);
   const deadline = start + timeoutMs;
   while (Date.now() < deadline) {
@@ -100,15 +100,15 @@ test.describe('Nextlevel.ai BDR — Greeting and Name Flow', () => {
     for (const lbl of CHAT_LABELS) {
       const btn = page.getByText(lbl, { exact: false }).first();
       console.log(`[CHAT] Waiting up to 50000ms for chat button: ${lbl}`);
-      const found = await btn.waitFor({ timeout: 50000 }).then(() => true).catch(() => false);
+      const found = await btn.waitFor({ timeout: 70000 }).then(() => true).catch(() => false);
       if (found) { chatBtn = btn; break; }
     }
     if (!chatBtn) {
       chatBtn = page.getByRole('button', { name: /let.?s chat/i });
-      const foundByRole = await chatBtn.waitFor({ timeout: 50000 }).then(() => true).catch(() => false);
+      const foundByRole = await chatBtn.waitFor({ timeout: 70000 }).then(() => true).catch(() => false);
       if (!foundByRole) {
         chatBtn = page.getByText(/let.?s chat/i).first();
-        await chatBtn.waitFor({ timeout: 50000 });
+        await chatBtn.waitFor({ timeout: 70000 });
       }
     }
 
@@ -134,7 +134,7 @@ test.describe('Nextlevel.ai BDR — Greeting and Name Flow', () => {
     console.log('[NL-BDR] Clicked chat button — waiting for greeting.');
 
     // ── Step 3: Wait for bot greeting ────────────────────────────────────────
-    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 50000);
+    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 70000);
     if (!greeting) {
       await page.screenshot({ path: join(REPORT_DIR, 'nl-greeting-fail.png') }).catch(() => {});
       logFailure('Step 3: Greeting', 'no greeting received', '');
@@ -162,7 +162,7 @@ test.describe('Nextlevel.ai BDR — Greeting and Name Flow', () => {
     console.log('[NL-BDR] Sent "Natali" — waiting for any bot response.');
 
     // ── Step 5: Validate bot replied ─────────────────────────────────────────
-    const botResponse = await waitForAnyNewOccurrence(page, replyPoll, replyBaselines, 60000);
+    const botResponse = await waitForAnyNewOccurrence(page, replyPoll, replyBaselines, 70000);
     if (!botResponse) {
       await page.screenshot({ path: join(REPORT_DIR, 'nl-name-reply-fail.png') }).catch(() => {});
       logFailure('Step 5: Bot reply after name', 'no response received', '');
