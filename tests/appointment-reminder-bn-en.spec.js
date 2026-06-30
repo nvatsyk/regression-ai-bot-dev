@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import {
+  sleep, navigateTo, checkAndHandleCloudflare, openChatWidget,
+  waitForAnyNewOccurrence, sendMessage, getAllFramesText, captureBaselines,
+} from './helpers/browser-utils.js';
 
 const BOT_URL =
   'https://demo.nextlevel.ai/std/#config=G74AiORyTmV30SWW488IbQoEOjlg_62oBVaAWVsuCQWa2xgKNjo320LNCZGm9j9l_FxcozWkpkkeMEYOgiEBu1CioGZbHkIrPaemMziiPPrGn4HWDimdcuUM2DcPVnALMHxG4K8BVJA-ZWsDCkT5_7vB-nf4C3EEYdafN828BnYdBFmzdEl1aWLZLi1JjkATTlJoWeJiuZagOzyPFg';
@@ -9,8 +13,6 @@ const REPORT_DIR  = join(process.cwd(), 'reports');
 const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
 const BUG_TITLE   = 'Bengali appointment reminder greeting and schedule response';
 const TEST_NAME   = 'Bengali appointment reminder greeting and schedule response';
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function csvEscape(v) {
   return `"${String(v).replace(/"/g, '""')}"`;
@@ -24,96 +26,49 @@ function logFailure(stepLabel, failedPhrase, pageText) {
   appendFileSync(REPORT_PATH, row);
 }
 
-// Best-effort text snapshot for logging (may not capture cross-origin iframe content).
-async function getAllFramesText(page) {
-  const parts = [];
-  for (const frame of page.frames()) {
-    const t = await frame.evaluate(() =>
-      document.body ? document.body.innerText : ''
-    ).catch(() => '');
-    if (t.trim()) parts.push(t.trim());
-  }
-  return parts.join('\n');
-}
-
-async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
-  const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: inputWaitMs });
-  await input.fill(text);
-  await input.press('Enter');
-  await sleep(500);
-  const stillFilled = await input.inputValue().catch(() => '');
-  if (stillFilled.trim() === text.trim()) {
-    const named = page.getByRole('button', { name: /^send$/i });
-    const hasSend = (await named.count().catch(() => 0)) > 0;
-    await (hasSend ? named : page.getByRole('button').last()).click().catch(() => {});
-  }
-  await sleep(8000);
-}
-
-// Polls until any phrase count increases above its baseline. Returns matched phrase or null.
-async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const phrase of phrases) {
-      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return phrase;
-    }
-    await sleep(2000);
-  }
-  return null;
-}
-
-async function captureBaselines(page, phrases) {
-  const baselines = {};
-  for (const p of phrases) {
-    baselines[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
-  }
-  return baselines;
-}
-
-// Broad greeting phrases — any bot greeting will include at least one.
 const GREETING_PHRASES = [
   'হ্যালো', 'বোর্দরুম', 'Boardroom', 'Jessica',
   'ধন্যবাদ', 'Hello', 'কল', 'সাহায্য', 'help', 'calling', 'Good',
 ];
 
-// Broad response phrases — any bot reply to a schedule question will include at least one.
-// Covers Bengali time/day words, common conversational particles, and English fallbacks.
 const RESPONSE_PHRASES = [
-  // Bengali time and schedule words
   'সময়', 'দিন', 'ঘণ্টা', 'সকাল', 'বিকেল', 'রাত',
   'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি', 'রবি',
   'থেকে', 'পর্যন্ত', 'খোলা', 'বন্ধ', 'কাজ', 'অফিস',
-  // Common Bengali conversational words (present in virtually any reply)
   'আমাদের', 'আপনার', 'আপনি', 'আমরা', 'আমি',
   'হয়', 'আছে', 'হবে', 'পাবেন', 'করুন',
-  // English fallbacks (bot may mix languages)
   'hours', 'Monday', 'Friday', 'open', 'available',
   'schedule', 'working', 'time', 'office', 'closed',
 ];
 
 test.describe('Bengali Appointment Reminder — Greeting and Schedule Response', () => {
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(180000); // 3 min: load + greeting + 1 response + CI headroom
+    test.setTimeout(180000);
 
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
     console.log('[APPT-BN] Navigating to Bengali appointment bot...');
-    await page.goto(BOT_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await navigateTo(page, BOT_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.screenshot({ path: join(REPORT_DIR, 'appt-bn-startup.png') }).catch(() => {});
+    await checkAndHandleCloudflare(page, '[APPT-BN]', REPORT_DIR);
     console.log('[APPT-BN] Page loaded.');
 
-    // ── Step 2: Click "Text Chat" ─────────────────────────────────────────────
-    const chatBtn = page.getByRole('button', { name: /text chat/i });
-    await chatBtn.waitFor({ timeout: 30000 });
-    console.log('[APPT-BN] Found "Text Chat" button — clicking.');
-
-    // Capture phrase baselines BEFORE opening chat so greeting is reliably detected.
+    // ── Step 2: Capture baselines, open chat ─────────────────────────────────
     const greetingBaselines = await captureBaselines(page, GREETING_PHRASES);
-    await chatBtn.click();
-    await sleep(2000); // brief settle for panel to begin loading
+
+    const chatOpened = await openChatWidget(page, {
+      prefix: '[APPT-BN]',
+      labels: ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", "Let's Chat", 'Start New Session'],
+      failScreenshotPath: join(REPORT_DIR, 'appt-bn-open-btn-not-found.png'),
+      timeoutMs: 60000,
+    });
+    if (!chatOpened) {
+      logFailure('Step 2: Chat button', 'no chat button found', '');
+      throw new Error('[APPT-BN] Chat button not found');
+    }
+    console.log('[APPT-BN] Found "Text Chat" button — clicked.');
+    await sleep(2000);
 
     // ── Step 3: Wait for any non-empty bot greeting ───────────────────────────
     console.log('[APPT-BN] Waiting up to 60s for bot greeting...');
@@ -131,14 +86,11 @@ test.describe('Bengali Appointment Reminder — Greeting and Schedule Response',
     }
     expect(matchedGreeting, 'Step 3: bot did not send a greeting').not.toBeNull();
 
-    // Wait for the textbox to be ready — signals the bot finished its greeting message.
     await page.getByRole('textbox').waitFor({ timeout: 40000 }).catch(() => {});
-    await sleep(3000); // extra settle so any streaming greeting text finishes
+    await sleep(3000);
     console.log('[APPT-BN] Greeting validated and input ready.');
 
     // ── Step 4: Send Bengali user message ─────────────────────────────────────
-    // Capture response baselines AFTER greeting is fully settled so only the new bot
-    // reply (not the greeting itself) triggers response detection.
     const responseBaselines = await captureBaselines(page, RESPONSE_PHRASES);
 
     const USER_MSG = 'আপনার কাজের সময়সূচী কী?';

@@ -1,14 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import {
+  sleep, navigateTo, checkAndHandleCloudflare, openChatWidget,
+  waitForAnyNewOccurrence, sendMessage,
+} from './helpers/browser-utils.js';
 
 const BOT_URL = 'https://bit.ly/Vodafone-AI-Demo';
 
 const REPORT_DIR  = join(process.cwd(), 'reports');
 const REPORT_PATH = join(REPORT_DIR, 'vodafone-assistant-fail-report.csv');
 const TEST_NAME   = 'Vodafone Cook Islands — Moana AI — Greeting and Services Flow';
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function csvEscape(v) {
   return `"${String(v).replace(/"/g, '""')}"`;
@@ -20,32 +22,6 @@ function logFailure(stepLabel, failedPhrase, pageText) {
     new Date().toISOString(), TEST_NAME, stepLabel, failedPhrase, pageText.slice(0, 400),
   ].map(csvEscape).join(',') + '\n';
   appendFileSync(REPORT_PATH, row);
-}
-
-async function sendMessage(page, text) {
-  const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: 30000 });
-  await input.fill(text);
-  await input.press('Enter');
-  await sleep(500);
-  const stillFilled = await input.inputValue().catch(() => '');
-  if (stillFilled.trim() === text.trim()) {
-    const named = page.getByRole('button', { name: /^send$/i });
-    const hasSend = (await named.count().catch(() => 0)) > 0;
-    await (hasSend ? named : page.getByRole('button').last()).click().catch(() => {});
-  }
-}
-
-async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 45000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const phrase of phrases) {
-      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return true;
-    }
-    await sleep(2000);
-  }
-  return false;
 }
 
 async function checkPhraseGroups(page, phraseGroups) {
@@ -68,13 +44,21 @@ test.describe('Vodafone Cook Islands — Moana AI — Regression', () => {
 
     // ── Step 1: Navigate ───────────────────────────────────────────────────────
     console.log('[VODAFONE] Navigating to bot URL...');
-    await page.goto(BOT_URL);
+    await navigateTo(page, BOT_URL);
+    await checkAndHandleCloudflare(page, '[VODAFONE]', REPORT_DIR);
 
     // ── Step 2: Click "TEXT CHAT" button ──────────────────────────────────────
-    const chatButton = page.getByRole('button', { name: /text chat/i });
-    await chatButton.waitFor({ timeout: 30000 });
+    const chatOpened = await openChatWidget(page, {
+      prefix: '[VODAFONE]',
+      labels: ['Text Chat', 'TEXT CHAT', 'Chat', 'Start Chat'],
+      failScreenshotPath: join(REPORT_DIR, 'vodafone-open-btn-not-found.png'),
+      timeoutMs: 60000,
+    });
     await page.screenshot({ path: join(REPORT_DIR, 'vodafone-startup.png') }).catch(() => {});
-    await chatButton.click();
+    if (!chatOpened) {
+      logFailure('Step 2: Chat button', 'Text Chat button not found', '');
+      throw new Error('[VODAFONE] Text Chat button not found');
+    }
     console.log('[VODAFONE] Clicked "TEXT CHAT" button');
 
     const input = page.getByRole('textbox');

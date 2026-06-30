@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import {
+  sleep, navigateTo, checkAndHandleCloudflare, openChatWidget,
+  waitForBotGreeting, waitForAnyNewOccurrence, sendMessage,
+} from './helpers/browser-utils.js';
 
 const BOT_URL =
   'https://demo.nextlevel.ai/std/#config=G4UAKGTqHPlzBth8O49KPVnI3YuRTJOMEDWbUAK9Yduh5PWal-K-IN63Klq6_9JBKp5qrESF44g4Jy2jrTdyMApCl_mGtnAAVRrCPHCMZUFmP8dYFhtGkS6oQlLZBCUMKZKc5WXy3CkKfg';
@@ -9,8 +13,6 @@ const REPORT_DIR  = join(process.cwd(), 'reports');
 const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
 const BUG_TITLE   = 'Keyless English greeting and unlock reply flow';
 const TEST_NAME   = 'Keyless English greeting and unlock reply flow';
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function csvEscape(v) {
   return `"${String(v).replace(/"/g, '""')}"`;
@@ -24,49 +26,6 @@ function logFailure(stepLabel, failedPhrase, pageText) {
   appendFileSync(REPORT_PATH, row);
 }
 
-async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
-  const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: inputWaitMs });
-  await input.fill(text);
-  await input.press('Enter');
-  await sleep(500);
-  const stillFilled = await input.inputValue().catch(() => '');
-  if (stillFilled.trim() === text.trim()) {
-    const named = page.getByRole('button', { name: /^send$/i });
-    const hasSend = (await named.count().catch(() => 0)) > 0;
-    await (hasSend ? named : page.getByRole('button').last()).click().catch(() => {});
-  }
-  await sleep(8000);
-}
-
-async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const phrase of phrases) {
-      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return phrase;
-    }
-    await sleep(2000);
-  }
-  return null;
-}
-
-async function waitForBotGreeting(page, greetingPoll, greetingBaselines, timeoutMs = 70000) {
-  const start = Date.now();
-  await page.getByRole('textbox').waitFor({ timeout: Math.min(60000, timeoutMs) }).catch(() => {});
-  await sleep(5000);
-  const deadline = start + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const phrase of greetingPoll) {
-      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (greetingBaselines[phrase] ?? 0)) return phrase;
-    }
-    await sleep(2000);
-  }
-  const inputVisible = await page.getByRole('textbox').isVisible().catch(() => false);
-  return inputVisible ? 'greeting received' : null;
-}
-
 test.describe('Keyless English — Greeting and Unlock Reply Flow', () => {
   test(TEST_NAME, async ({ page }) => {
     test.setTimeout(180000);
@@ -74,36 +33,29 @@ test.describe('Keyless English — Greeting and Unlock Reply Flow', () => {
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
     console.log('[KE2] Navigating to Keyless English bot...');
-    await page.goto(BOT_URL);
+    await navigateTo(page, BOT_URL);
     await page.screenshot({ path: join(REPORT_DIR, 'ke2-startup.png') }).catch(() => {});
+    await checkAndHandleCloudflare(page, '[KE2]', REPORT_DIR);
 
-    // ── Step 2: Open chat ─────────────────────────────────────────────────────
-    const CHAT_LABELS = ['Text Chat', 'Chat', 'Start Chat', "Let's Chat", "Let’s Chat", 'Start New Session'];
-    let chatBtn = null;
-    for (const lbl of CHAT_LABELS) {
-      const btn = page.getByText(lbl, { exact: false }).first();
-      console.log(`[CHAT] Waiting up to 70000ms for chat button: ${lbl}`);
-      const found = await btn.waitFor({ timeout: 70000 }).then(() => true).catch(() => false);
-      if (found) { chatBtn = btn; break; }
-    }
-    if (!chatBtn) {
-      const vis = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('button,[role="button"]'))
-          .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
-      ).catch(() => []);
-      console.log('[KE2] Chat button not found. Visible buttons:', vis);
-      await page.screenshot({ path: join(REPORT_DIR, 'ke2-open-btn-not-found.png') }).catch(() => {});
-      throw new Error(`[KE2] Chat button not found. Tried: ${CHAT_LABELS.join(', ')}. Visible: ${vis.join(', ')}`);
-    }
-    console.log('[KE2] Found chat button — clicking.');
-
-    // Capture baselines BEFORE clicking so greeting detection is accurate
+    // ── Step 2: Capture baselines, open chat ──────────────────────────────────
     const greetingPhrases = ['help', 'Hello', 'Hi', 'welcome', 'assist', 'support', 'UXE', 'Ahmed', 'Keyless', 'chat', 'today', 'can I'];
     const greetingBase = {};
     for (const p of greetingPhrases) {
       greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
     }
-    await chatBtn.click();
+
+    const chatOpened = await openChatWidget(page, {
+      prefix: '[KE2]',
+      failScreenshotPath: join(REPORT_DIR, 'ke2-open-btn-not-found.png'),
+    });
+    if (!chatOpened) {
+      const vis = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('button,[role="button"]'))
+          .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
+      ).catch(() => []);
+      logFailure('Step 2: Chat button', 'no chat button found', vis.join(', '));
+      throw new Error(`[KE2] Chat button not found. Visible: ${vis.join(', ')}`);
+    }
 
     // ── Step 3: Wait for bot greeting ────────────────────────────────────────
     const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 70000);

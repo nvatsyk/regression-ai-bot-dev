@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { writeFileSync, appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import {
+  navigateTo, checkAndHandleCloudflare, openChatWidget,
+} from './helpers/browser-utils.js';
 
 const BOT_URL =
   'https://demo.nextlevel.ai/std/#config=G74AOORyTmV70SWWHX5GaAtEOjlg_62oAivArC0gT9PJ7fBDQumlZXauPSOzbYJPlZzGm9GaDWUWIb3RJW2GjG9x2DAdB6FYvttQmUDkrG_86chwzcqtCHfEgXWww1uI4TMBdw2hhuwp2RuQIS7-3w3WvuOfT2KI8uG8KcYNHB0IFst6qupSkuBxlOiIHqWZsklZqiuKmmQJVnO0Ag';
@@ -91,17 +94,21 @@ test.describe('KSA (Najdi) Royal Commission Q&A [Bilingual] - Regression', () =>
 
   test('greeting → Hello → services flow', async ({ page }) => {
     console.log('[INFO] Navigating to Royal Commission bot...');
-    await page.goto(BOT_URL);
+    await navigateTo(page, BOT_URL);
+    await checkAndHandleCloudflare(page, '[ROYAL]', REPORT_DIR);
 
-    const chatButton = page.getByRole('button', { name: 'Text Chat' });
-    await chatButton.waitFor({ timeout: 30000 });
-    await chatButton.click();
+    const chatOpened = await openChatWidget(page, {
+      prefix: '[ROYAL]',
+      labels: ['Text Chat', 'Chat', 'Start Chat'],
+      failScreenshotPath: join(REPORT_DIR, 'royal-open-btn-not-found.png'),
+      timeoutMs: 60000,
+    });
+    if (!chatOpened) throw new Error('[ROYAL] Text Chat button not found');
     console.log('[INFO] Clicked "Text Chat" button');
 
     const input = page.getByRole('textbox');
     await input.waitFor({ timeout: 30000 });
 
-    // Wait for the Arabic greeting to load before asserting
     console.log('[INFO] Waiting for Arabic greeting to load...');
     await page.waitForTimeout(8000);
 

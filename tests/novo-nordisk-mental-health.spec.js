@@ -1,6 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import {
+  sleep, navigateTo, checkAndHandleCloudflare,
+  waitForAnyNewOccurrence, getAllFramesText,
+} from './helpers/browser-utils.js';
 
 const BOT_URL = 'https://demo.nextlevel.ai/custom/novo-nordisk';
 
@@ -8,8 +12,6 @@ const REPORT_DIR  = join(process.cwd(), 'reports');
 const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
 const BUG_TITLE   = 'Novo Nordisk Mental Health bot greeting and response flow';
 const TEST_NAME   = 'Novo Nordisk Mental Health bot greeting and response flow';
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function csvEscape(v) {
   return `"${String(v).replace(/"/g, '""')}"`;
@@ -23,26 +25,11 @@ function logFailure(stepLabel, failedPhrase, pageText) {
   appendFileSync(REPORT_PATH, row);
 }
 
-// Captures innerText from all frames (main + iframes).
-async function getAllFramesText(page) {
-  const parts = [];
-  for (const frame of page.frames()) {
-    const t = await frame.evaluate(() =>
-      document.body ? document.body.innerText : ''
-    ).catch(() => '');
-    if (t.trim()) parts.push(t.trim());
-  }
-  return parts.join('\n');
-}
-
-// Sends a message via the chat input. Targets the named chat input first to
-// avoid strict-mode errors when multiple textboxes exist on the page.
-async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
-  // Prefer the dedicated chat input; fall back to the first visible textbox.
+// Targets the named chat input to avoid strict-mode errors when multiple textboxes exist.
+async function sendMessageMH(page, text, { inputWaitMs = 60000 } = {}) {
   const chatInput = page.locator('input[name="chat"], textarea[name="chat"]').first();
   const chatFound = await chatInput.waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
   const input = chatFound ? chatInput : page.getByRole('textbox').first();
-
   await input.waitFor({ timeout: inputWaitMs });
   await input.fill(text);
   await input.press('Enter');
@@ -56,27 +43,11 @@ async function sendMessage(page, text, { inputWaitMs = 60000 } = {}) {
   await sleep(8000);
 }
 
-// Polls until the count of ANY phrase increases beyond its baseline.
-// Returns the matched phrase or null on timeout.
-async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 60000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const phrase of phrases) {
-      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return phrase;
-    }
-    await sleep(2000);
-  }
-  return null;
-}
-
-// Polls up to 60s for "Start New Session" or close variants, scrolling it into
-// view and clicking it. Returns true on success, false on timeout.
+// Polls up to 60s for "Start New Session" or close variants.
 async function findAndClickStartSession(page) {
   const VARIATIONS = ['Start New Session', 'Start New', 'New Session', 'Session'];
   const deadline = Date.now() + 60000;
   while (Date.now() < deadline) {
-    // Playwright role locator (most reliable when button is in normal DOM)
     const roleBtn = page.getByRole('button', { name: /start new session/i }).first();
     if (await roleBtn.isVisible().catch(() => false)) {
       await roleBtn.scrollIntoViewIfNeeded().catch(() => {});
@@ -84,7 +55,6 @@ async function findAndClickStartSession(page) {
       await roleBtn.click();
       return true;
     }
-    // DOM + shadow DOM scan with scroll-into-view before click
     const clicked = await page.evaluate((variations) => {
       function scanRoot(root) {
         return Array.from(root.querySelectorAll('button,[role="button"],a')).find(el => {
@@ -106,7 +76,6 @@ async function findAndClickStartSession(page) {
       return null;
     }, VARIATIONS).catch(() => null);
     if (clicked) { console.log(`[NOVO-MH] Found session button via DOM: "${clicked}"`); return true; }
-    // Playwright text locators as additional fallback
     for (const v of VARIATIONS) {
       const el = page.getByText(v, { exact: false }).first();
       if (await el.isVisible().catch(() => false)) {
@@ -128,14 +97,15 @@ async function findAndClickStartSession(page) {
 
 test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () => {
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(240000); // 4 min: load + session start + greeting + response + CI headroom
+    test.setTimeout(240000);
 
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
     console.log('[NOVO-MH] Navigating to Novo Nordisk Mental Health page...');
-    await page.goto(BOT_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await navigateTo(page, BOT_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.screenshot({ path: join(REPORT_DIR, 'novo-mh-startup.png') }).catch(() => {});
+    await checkAndHandleCloudflare(page, '[NOVO-MH]', REPORT_DIR);
     console.log('[NOVO-MH] Page loaded.');
 
     // ── Step 2: Scroll down ───────────────────────────────────────────────────
@@ -158,13 +128,9 @@ test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () =>
     }
     console.log('[NOVO-MH] "Start New Session" clicked.');
     await page.screenshot({ path: join(REPORT_DIR, 'novo-mh-after-start.png') }).catch(() => {});
-
-    // Brief pause so the chat panel can open and settle before snapshotting baselines.
     await sleep(2000);
 
     // ── Step 4: Wait for greeting ─────────────────────────────────────────────
-    // Use multi-word phrases specific to a mental health chat greeting — avoids
-    // false positives from single letters appearing in outer page text.
     const GREETING_PHRASES = [
       'how are you feeling', 'how are you', 'How are you',
       'here for you', 'Here for you',
@@ -183,7 +149,7 @@ test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () =>
     console.log('[NOVO-MH] Waiting up to 60s for bot greeting...');
     const matchedGreetingPhrase = await waitForAnyNewOccurrence(page, GREETING_PHRASES, greetingBaselines, 60000);
 
-    await sleep(1000); // let the greeting finish rendering
+    await sleep(1000);
     const actualGreeting = await getAllFramesText(page);
     console.log(`[NOVO-MH] Greeting detected via phrase: "${matchedGreetingPhrase}"`);
     console.log('[NOVO-MH] Actual greeting text:', actualGreeting.slice(0, 500));
@@ -197,44 +163,27 @@ test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () =>
     console.log('[NOVO-MH] Greeting validated. Sending user message now.');
 
     // ── Step 5: Send "good" ───────────────────────────────────────────────────
-    // Baselines captured AFTER greeting is confirmed so any new bot content is
-    // detected as a response. Wide phrase list covers all likely phrasings.
     const RESPONSE_PHRASES = [
-      // Positive acknowledgments
-      "glad to hear", "Glad to hear",
-      "great to hear", "Great to hear",
-      "good to hear", "Good to hear",
-      "happy to hear", "Happy to hear",
-      "pleased to hear", "Pleased to hear",
-      "wonderful", "Wonderful",
-      "excellent", "Excellent",
-      "fantastic", "Fantastic",
-      "perfect", "Perfect",
-      "awesome", "Awesome",
-      "that's great", "That's great",
-      "that is great", "That is great",
-      // Follow-up questions
-      "tell me more", "Tell me more",
-      "how long", "How long",
-      "can you share", "can you tell",
-      "what else", "What else",
-      "would you like", "Would you like",
-      "how can I help", "How can I help",
-      "how can I support", "How can I support",
-      "what brings you", "What brings you",
-      "what would you", "What would you",
+      'glad to hear', 'Glad to hear', 'great to hear', 'Great to hear',
+      'good to hear', 'Good to hear', 'happy to hear', 'Happy to hear',
+      'pleased to hear', 'Pleased to hear',
+      'wonderful', 'Wonderful', 'excellent', 'Excellent',
+      'fantastic', 'Fantastic', 'perfect', 'Perfect', 'awesome', 'Awesome',
+      "that's great", "That's great", 'that is great', 'That is great',
+      'tell me more', 'Tell me more', 'how long', 'How long',
+      'can you share', 'can you tell', 'what else', 'What else',
+      'would you like', 'Would you like',
+      'how can I help', 'How can I help',
+      'how can I support', 'How can I support',
+      'what brings you', 'What brings you',
+      'what would you', 'What would you',
       "let's talk", "Let's talk",
-      // Empathy / acknowledgment
-      "sounds like", "Sounds like",
-      "I understand", "I hear you",
-      "thank you for", "Thank you for",
-      "I'm glad", "I am glad",
-      "I'm happy", "I am happy",
-      // Generic continuations
-      "of course", "Of course",
-      "certainly", "Certainly",
-      "absolutely", "Absolutely",
-      "I see", "noted", "sure",
+      'sounds like', 'Sounds like',
+      'I understand', 'I hear you',
+      'thank you for', 'Thank you for',
+      "I'm glad", 'I am glad', "I'm happy", 'I am happy',
+      'of course', 'Of course', 'certainly', 'Certainly',
+      'absolutely', 'Absolutely', 'I see', 'noted', 'sure',
     ];
     const responseBaselines = {};
     for (const p of RESPONSE_PHRASES) {
@@ -243,7 +192,7 @@ test.describe('Novo Nordisk Mental Health — Greeting and Response Flow', () =>
 
     const sentAt = Date.now();
     console.log(`[NOVO-MH] Sending: "good" at ${new Date(sentAt).toISOString()}`);
-    await sendMessage(page, 'good');
+    await sendMessageMH(page, 'good');
     console.log('[NOVO-MH] Message sent — waiting up to 90s for bot response.');
 
     // ── Step 6: Validate bot response ─────────────────────────────────────────

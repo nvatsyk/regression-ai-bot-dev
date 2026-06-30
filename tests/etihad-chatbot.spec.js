@@ -1,14 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { appendFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import {
+  sleep, navigateTo, checkAndHandleCloudflare, openChatWidget,
+  waitForAnyNewOccurrence, sendMessage,
+} from './helpers/browser-utils.js';
 
 const BOT_URL = 'https://sdemo.nextlevel.ai/etihad-chatbot';
 
 const REPORT_DIR  = join(process.cwd(), 'reports');
 const REPORT_PATH = join(REPORT_DIR, 'etihad-chatbot-fail-report.csv');
 const TEST_NAME   = 'Etihad Chatbot — Greeting and Services Flow';
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function csvEscape(v) {
   return `"${String(v).replace(/"/g, '""')}"`;
@@ -20,32 +22,6 @@ function logFailure(stepLabel, failedPhrase, pageText) {
     new Date().toISOString(), TEST_NAME, stepLabel, failedPhrase, pageText.slice(0, 400),
   ].map(csvEscape).join(',') + '\n';
   appendFileSync(REPORT_PATH, row);
-}
-
-async function sendMessage(page, text) {
-  const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: 30000 });
-  await input.fill(text);
-  await input.press('Enter');
-  await sleep(500);
-  const stillFilled = await input.inputValue().catch(() => '');
-  if (stillFilled.trim() === text.trim()) {
-    const named = page.getByRole('button', { name: /^send$/i });
-    const hasSend = (await named.count().catch(() => 0)) > 0;
-    await (hasSend ? named : page.getByRole('button').last()).click().catch(() => {});
-  }
-}
-
-async function waitForAnyNewOccurrence(page, phrases, baselines, timeoutMs = 45000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const phrase of phrases) {
-      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > (baselines[phrase] ?? 0)) return true;
-    }
-    await sleep(2000);
-  }
-  return false;
 }
 
 async function checkPhraseGroups(page, phraseGroups) {
@@ -68,13 +44,21 @@ test.describe('Etihad Text ChatBot — Regression', () => {
 
     // ── Step 1: Navigate ───────────────────────────────────────────────────────
     console.log('[ETIHAD] Navigating to bot URL...');
-    await page.goto(BOT_URL);
+    await navigateTo(page, BOT_URL);
+    await checkAndHandleCloudflare(page, '[ETIHAD]', REPORT_DIR);
 
     // ── Step 2: Click "Text Chat" button ───────────────────────────────────────
-    const chatButton = page.getByRole('button', { name: 'Text Chat' });
-    await chatButton.waitFor({ timeout: 30000 });
+    const chatOpened = await openChatWidget(page, {
+      prefix: '[ETIHAD]',
+      labels: ['Text Chat', 'Chat', 'Start Chat'],
+      failScreenshotPath: join(REPORT_DIR, 'etihad-open-btn-not-found.png'),
+      timeoutMs: 60000,
+    });
     await page.screenshot({ path: join(REPORT_DIR, 'etihad-startup.png') }).catch(() => {});
-    await chatButton.click();
+    if (!chatOpened) {
+      logFailure('Step 2: Chat button', 'Text Chat button not found', '');
+      throw new Error('[ETIHAD] Text Chat button not found');
+    }
     console.log('[ETIHAD] Clicked "Text Chat" button');
 
     const input = page.getByRole('textbox');
@@ -136,8 +120,6 @@ test.describe('Etihad Text ChatBot — Regression', () => {
     expect(step5Fail, `Step 5 failed: missing "${step5Fail}"`).toBeNull();
 
     // ── Step 6: Send "tell me about your services" ─────────────────────────────
-    // Use only bot-specific phrases for polling (avoid words like "services"/"flights"
-    // that appear in the user's own message bubble and would trigger a false positive).
     const step7Phrases = [
       'Just a moment',
       'flights, check flight status',
@@ -157,7 +139,7 @@ test.describe('Etihad Text ChatBot — Regression', () => {
 
     console.log('[ETIHAD] Sending "tell me about your services"...');
     await sendMessage(page, 'tell me about your services');
-    await sleep(3000); // let the message register before polling
+    await sleep(3000);
 
     // ── Step 7: Validate services response ────────────────────────────────────
     const step7Arrived = await waitForAnyNewOccurrence(page, step7Phrases, step7Base, 60000);
