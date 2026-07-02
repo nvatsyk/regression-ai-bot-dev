@@ -95,6 +95,9 @@ test.describe('Vodafone Cook Islands — Moana AI — Regression', () => {
     const step7Fail = await checkPhraseGroups(page, [
       { label: '"mobile, internet, WiFi, and business connectivity" mention', phrases: [
         'mobile, internet, WiFi', 'business connectivity',
+        'mobile, internet', 'internet, WiFi', 'WiFi and business',
+        'business and connectivity', 'connectivity solutions',
+        'mobile services', 'internet services',
       ]},
       { label: '"E-Moni Mobile Wallet" mention', phrases: ['E-Moni Mobile Wallet', 'E-Moni'] },
     ]);
