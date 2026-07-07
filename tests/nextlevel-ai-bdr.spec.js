@@ -1,31 +1,21 @@
 import { test, expect } from '@playwright/test';
-import { appendFileSync, mkdirSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { join } from 'path';
-import {
-  sleep, navigateTo, checkAndHandleCloudflare, openChatWidget,
-  waitForBotGreeting, waitForAnyNewOccurrence,
-} from './helpers/browser-utils.js';
+import { sleep, navigateTo, getAllFramesText } from './helpers/browser-utils.js';
+import { openChat } from './helpers/chat-launcher.js';
+import { waitForGreeting } from './helpers/greeting-helper.js';
+import { waitForBotResponse } from './helpers/response-helper.js';
+import { checkPhraseGroups, logFailure, reportPathFor, screenshotStage } from './helpers/logging-helper.js';
 
 const BOT_URL = 'https://nextlevel.ai/';
 
 const REPORT_DIR  = join(process.cwd(), 'reports');
-const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
+const REPORT_PATH = reportPathFor('nextlevel-ai-bdr', REPORT_DIR);
 const BUG_TITLE   = 'Nextlevel.ai BDR greeting and name flow';
 const TEST_NAME   = 'Nextlevel.ai BDR greeting and name flow';
 
-function csvEscape(v) {
-  return `"${String(v).replace(/"/g, '""')}"`;
-}
-
-function logFailure(stepLabel, failedPhrase, pageText) {
-  mkdirSync(REPORT_DIR, { recursive: true });
-  const row = [
-    new Date().toISOString(), TEST_NAME, BUG_TITLE, stepLabel, failedPhrase, pageText.slice(0, 400),
-  ].map(csvEscape).join(',') + '\n';
-  appendFileSync(REPORT_PATH, row);
-}
-
-// nextlevel.ai has iframes — textbox search spans all frames
+// nextlevel.ai has iframes — textbox search spans all frames, so this can't
+// use the generic response-helper.sendMessage (main-frame only).
 async function sendMessageNL(page, text, { inputWaitMs = 70000 } = {}) {
   let input = null;
   const deadline = Date.now() + inputWaitMs;
@@ -67,8 +57,7 @@ test.describe('Nextlevel.ai BDR — Greeting and Name Flow', () => {
     console.log('[NL-BDR] Navigating to nextlevel.ai...');
     await navigateTo(page, BOT_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await sleep(3000);
-    await page.screenshot({ path: join(REPORT_DIR, 'nl-startup.png') }).catch(() => {});
-    await checkAndHandleCloudflare(page, '[NL-BDR]', REPORT_DIR);
+    await screenshotStage(page, REPORT_DIR, 'nl', 'startup');
 
     // Dismiss cookie consent / got-it banners
     const cookieSelectors = ['.cmplz-accept', '.cmplz-btn-accept', 'button[aria-label*="Accept"]', 'button[aria-label*="accept"]'];
@@ -82,62 +71,57 @@ test.describe('Nextlevel.ai BDR — Greeting and Name Flow', () => {
     if (hasGotIt) await gotItBtn.click().catch(() => {});
     await sleep(500);
 
-    // ── Step 2: Capture baselines, open chat ──────────────────────────────────
-    const greetingPhrases = ['Hello', 'Hi', 'welcome', 'name', 'your name', 'may I have your name', 'help', 'assist', 'NextLevel', 'nextlevel', 'Jessica', 'jessica', 'today'];
-    const greetingBase = {};
-    for (const p of greetingPhrases) {
-      greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
-    }
-
-    const chatOpened = await openChatWidget(page, {
+    // ── Step 2: Open chat ─────────────────────────────────────────────────────
+    await openChat(page, {
       prefix: '[NL-BDR]',
-      labels: ["Let's Chat", "Let's Chat", 'Text Chat', 'Chat', 'Start Chat', 'Start New Session'],
-      failScreenshotPath: join(REPORT_DIR, 'nl-open-btn-not-found.png'),
+      reportDir: REPORT_DIR,
+      labels: ["Let's Chat", 'Text Chat', 'Chat', 'Start Chat', 'Start New Session'],
     });
-    if (!chatOpened) {
-      logFailure('Step 2: Chat button', 'no chat button found', '');
-      throw new Error('[NL-BDR] Chat button not found after 70s');
-    }
     console.log('[NL-BDR] Clicked chat button — waiting for greeting.');
 
-    // ── Step 3: Wait for bot greeting ────────────────────────────────────────
-    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 70000);
-    if (!greeting) {
-      await page.screenshot({ path: join(REPORT_DIR, 'nl-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', '');
-    }
-    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
-    console.log('[TEST] Greeting:', greeting);
-    await page.screenshot({ path: join(REPORT_DIR, 'nl-greeting.png') }).catch(() => {});
+    // ── Step 3: Wait for + validate bot greeting ─────────────────────────────
+    await waitForGreeting(page, { prefix: '[NL-BDR]', reportDir: REPORT_DIR, timeoutMs: 70000 });
+    await screenshotStage(page, REPORT_DIR, 'nl', 'greeting');
 
-    // ── Step 4: Send "Natali" ─────────────────────────────────────────────────
-    const replyPoll = [
-      'Natali', 'natali',
-      'meet you', 'meet', 'nice to meet', 'great to meet', 'pleasure to meet',
-      'phone', 'number', 'email', 'address',
-      'Thank you', 'thank you', 'Thanks', 'thanks',
-      'please', 'provide', 'could you', 'can you', 'would you',
-      'help', 'assist', 'question', 'interested',
-    ];
-    const replyBaselines = {};
-    for (const p of replyPoll) {
-      replyBaselines[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    const greetingFail = await checkPhraseGroups(page, [
+      { label: 'greeting acknowledgement', phrases: [
+        'Hello', 'Hi', 'welcome', 'name', 'your name', 'may I have your name',
+        'help', 'assist', 'NextLevel', 'nextlevel', 'Jessica', 'jessica', 'today',
+      ]},
+    ]);
+    if (greetingFail) {
+      await screenshotStage(page, REPORT_DIR, 'nl', 'greeting-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, BUG_TITLE, 'Step 3: Greeting', greetingFail, '']);
     }
+    expect(greetingFail, 'Step 3: bot did not send a greeting').toBeNull();
 
+    // ── Step 4-5: Send "Natali" and validate bot replied ─────────────────────
+    const nameBaseline = await getAllFramesText(page);
     await sendMessageNL(page, 'Natali');
-    console.log('[TEST] User message sent');
+    console.log('[NL-BDR] User message sent');
+    await waitForBotResponse(page, {
+      prefix: '[NL-BDR]', reportDir: REPORT_DIR,
+      baselineText: nameBaseline, sentText: 'Natali', timeoutMs: 70000,
+    });
+    await screenshotStage(page, REPORT_DIR, 'nl', 'after-name');
 
-    // ── Step 5: Validate bot replied ─────────────────────────────────────────
-    const botResponse = await waitForAnyNewOccurrence(page, replyPoll, replyBaselines, 70000);
-    if (!botResponse) {
-      await page.screenshot({ path: join(REPORT_DIR, 'nl-name-reply-fail.png') }).catch(() => {});
-      logFailure('Step 5: Bot reply after name', 'no response received', '');
+    const replyFail = await checkPhraseGroups(page, [
+      { label: 'name reply', phrases: [
+        'Natali', 'natali',
+        'meet you', 'meet', 'nice to meet', 'great to meet', 'pleasure to meet',
+        'phone', 'number', 'email', 'address',
+        'Thank you', 'thank you', 'Thanks', 'thanks',
+        'please', 'provide', 'could you', 'can you', 'would you',
+        'help', 'assist', 'question', 'interested',
+      ]},
+    ]);
+    if (replyFail) {
+      await screenshotStage(page, REPORT_DIR, 'nl', 'name-reply-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, BUG_TITLE, 'Step 5: Bot reply after name', replyFail, '']);
     }
-    expect(botResponse, 'Step 5: bot did not reply after receiving "Natali"').toBeTruthy();
-    console.log('[TEST] Bot response received:', botResponse);
-    await page.screenshot({ path: join(REPORT_DIR, 'nl-after-name.png') }).catch(() => {});
+    expect(replyFail, 'Step 5: bot did not reply after receiving "Natali"').toBeNull();
 
-    await page.screenshot({ path: join(REPORT_DIR, 'nl-complete.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'nl', 'complete');
     console.log('[NL-BDR] Bot replied after name — test complete.');
   });
 });

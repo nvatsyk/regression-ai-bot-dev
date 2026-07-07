@@ -1,30 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { appendFileSync, mkdirSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { join } from 'path';
-import {
-  sleep, navigateTo, checkAndHandleCloudflare, openChatWidget,
-  waitForBotGreeting, waitForAnyNewOccurrence, sendMessage,
-} from './helpers/browser-utils.js';
+import { sleep, navigateTo, getAllFramesText } from './helpers/browser-utils.js';
+import { openChat } from './helpers/chat-launcher.js';
+import { waitForGreeting } from './helpers/greeting-helper.js';
+import { sendMessage, waitForBotResponse } from './helpers/response-helper.js';
+import { checkPhraseGroups, logFailure, reportPathFor, screenshotStage } from './helpers/logging-helper.js';
 
 const BOT_URL =
   'https://demo.nextlevel.ai/std/#config=G74AGORyTmV30UmJ5Pg7Qlsg0skB-29FLbACzNpyjxNLJ7fDD1mAWUmk55oTMpra_5TxbfxpjVETIw-olmVQRkAPJQpqumUhhOk5NTE5wou-8aehtWOUTrlyBt03D1ZwC3T4jMBeA6ggfYrWBiSI8v93o6vf4c_FEYRZf94E_Qa2doNlXVUUWGKLjkQEgcsXlXd4YrmCYjCSrbqKhRY';
 
 const REPORT_DIR  = join(process.cwd(), 'reports');
-const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
+const REPORT_PATH = reportPathFor('solix-bdr', REPORT_DIR);
 const BUG_TITLE   = 'Solix BDR name capture flow';
 const TEST_NAME   = 'Solix BDR name capture flow';
-
-function csvEscape(v) {
-  return `"${String(v).replace(/"/g, '""')}"`;
-}
-
-function logFailure(stepLabel, failedPhrase, pageText) {
-  mkdirSync(REPORT_DIR, { recursive: true });
-  const row = [
-    new Date().toISOString(), TEST_NAME, BUG_TITLE, stepLabel, failedPhrase, pageText.slice(0, 400),
-  ].map(csvEscape).join(',') + '\n';
-  appendFileSync(REPORT_PATH, row);
-}
 
 test.describe('Solix BDR — Name Capture Flow', () => {
   test(TEST_NAME, async ({ page }) => {
@@ -33,8 +22,7 @@ test.describe('Solix BDR — Name Capture Flow', () => {
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
     await navigateTo(page, BOT_URL);
-    await checkAndHandleCloudflare(page, '[SOLIX]', REPORT_DIR);
-    await page.screenshot({ path: join(REPORT_DIR, 'solix-startup.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'solix', 'startup');
 
     // Dismiss any "Got it" banner
     const gotItBtn = page.getByRole('button', { name: /got it/i });
@@ -42,63 +30,55 @@ test.describe('Solix BDR — Name Capture Flow', () => {
     if (hasGotIt) await gotItBtn.click().catch(() => {});
     await sleep(500);
 
-    // ── Step 2: Capture baselines, open chat ──────────────────────────────────
-    const greetingPhrases = ['Hello', 'Hi', 'welcome', 'name', 'your name', 'address you', 'help', 'assist', 'Solix', 'solix', 'Jessica', 'jessica', 'today'];
-    const greetingBase = {};
-    for (const p of greetingPhrases) {
-      greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
-    }
-
-    const chatOpened = await openChatWidget(page, {
+    // ── Step 2: Open chat ─────────────────────────────────────────────────────
+    await openChat(page, {
       prefix: '[SOLIX]',
-      labels: ["Let's Talk", 'Lets Talk', 'Talk', 'Text Chat', 'Chat', 'Start Chat', "Let's Chat", "Let's Chat", 'Start New Session'],
-      failScreenshotPath: join(REPORT_DIR, 'solix-open-btn-not-found.png'),
+      reportDir: REPORT_DIR,
+      labels: ["Let's Talk", 'Lets Talk', 'Talk', 'Text Chat', 'Chat', 'Start Chat', "Let's Chat", 'Start New Session'],
     });
-    if (!chatOpened) {
-      const vis = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('button,[role="button"]'))
-          .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
-      ).catch(() => []);
-      throw new Error(`[SOLIX] Chat button not found. Visible: ${vis.join(', ')}`);
-    }
 
-    // ── Step 3: Wait for bot greeting ────────────────────────────────────────
-    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 70000);
-    if (!greeting) {
-      await page.screenshot({ path: join(REPORT_DIR, 'solix-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', '');
-    }
-    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
-    console.log('[TEST] Greeting:', greeting);
-    await page.screenshot({ path: join(REPORT_DIR, 'solix-greeting.png') }).catch(() => {});
+    // ── Step 3: Wait for + validate bot greeting ─────────────────────────────
+    await waitForGreeting(page, { prefix: '[SOLIX]', reportDir: REPORT_DIR, timeoutMs: 70000 });
+    await screenshotStage(page, REPORT_DIR, 'solix', 'greeting');
 
-    // ── Step 4: Send "Natali Test" ────────────────────────────────────────────
-    const step5Poll = [
-      'Hi Natali', 'Natali', 'natali',
-      'How can I help', 'learn more about Solix',
-      'How can I assist', 'data management', 'assist you today',
-      'feel free', 'here to help', 'happy to help',
-      'Great', 'great', 'Nice', 'Thanks', 'thank',
-    ];
-    const step5Base = {};
-    for (const p of step5Poll) {
-      step5Base[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    const greetingFail = await checkPhraseGroups(page, [
+      { label: 'greeting acknowledgement', phrases: [
+        'Hello', 'Hi', 'welcome', 'name', 'your name', 'address you',
+        'help', 'assist', 'Solix', 'solix', 'Jessica', 'jessica', 'today',
+      ]},
+    ]);
+    if (greetingFail) {
+      await screenshotStage(page, REPORT_DIR, 'solix', 'greeting-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, BUG_TITLE, 'Step 3: Greeting', greetingFail, '']);
     }
+    expect(greetingFail, 'Step 3: bot did not send a greeting').toBeNull();
 
+    // ── Step 4-5: Send "Natali Test" and validate any bot response ───────────
+    const nameBaseline = await getAllFramesText(page);
     await sendMessage(page, 'Natali Test');
-    console.log('[TEST] User message sent');
+    console.log('[SOLIX] User message sent');
+    await waitForBotResponse(page, {
+      prefix: '[SOLIX]', reportDir: REPORT_DIR,
+      baselineText: nameBaseline, sentText: 'Natali Test', timeoutMs: 70000,
+    });
+    await screenshotStage(page, REPORT_DIR, 'solix', 'after-name');
 
-    // ── Step 5: Wait for any bot response ────────────────────────────────────
-    const step5Arrived = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 70000);
-    if (!step5Arrived) {
-      await page.screenshot({ path: join(REPORT_DIR, 'solix-step5-fail.png') }).catch(() => {});
-      logFailure('Step 5: Name acknowledgement', 'no bot response received', '');
+    const step5Fail = await checkPhraseGroups(page, [
+      { label: 'name acknowledgement', phrases: [
+        'Hi Natali', 'Natali', 'natali',
+        'How can I help', 'learn more about Solix',
+        'How can I assist', 'data management', 'assist you today',
+        'feel free', 'here to help', 'happy to help',
+        'Great', 'great', 'Nice', 'Thanks', 'thank',
+      ]},
+    ]);
+    if (step5Fail) {
+      await screenshotStage(page, REPORT_DIR, 'solix', 'step5-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, BUG_TITLE, 'Step 5: Name acknowledgement', step5Fail, '']);
     }
-    expect(step5Arrived, 'Step 5: bot gave no response after sending name').toBeTruthy();
-    console.log('[TEST] Bot response received:', step5Arrived);
-    await page.screenshot({ path: join(REPORT_DIR, 'solix-after-name.png') }).catch(() => {});
+    expect(step5Fail, 'Step 5: bot gave no expected response after sending name').toBeNull();
 
-    await page.screenshot({ path: join(REPORT_DIR, 'solix-complete.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'solix', 'complete');
     console.log('[SOLIX] Test complete — name capture and Solix intro verified.');
   });
 });

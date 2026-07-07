@@ -1,76 +1,34 @@
 import { test, expect } from '@playwright/test';
-import { writeFileSync, appendFileSync, mkdirSync } from 'fs';
+import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import {
-  navigateTo, checkAndHandleCloudflare, openChatWidget,
-} from './helpers/browser-utils.js';
+import { navigateTo, getAllFramesText } from './helpers/browser-utils.js';
+import { openChat } from './helpers/chat-launcher.js';
+import { waitForGreeting } from './helpers/greeting-helper.js';
+import { sendMessage, waitForBotResponse } from './helpers/response-helper.js';
+import { checkPhraseGroups, logFailure, reportPathFor } from './helpers/logging-helper.js';
 
 const BOT_URL =
   'https://demo.nextlevel.ai/std/#config=G74AOORyTmV70SWWHX5GaAtEOjlg_62oAivArC0gT9PJ7fBDQumlZXauPSOzbYJPlZzGm9GaDWUWIb3RJW2GjG9x2DAdB6FYvttQmUDkrG_86chwzcqtCHfEgXWww1uI4TMBdw2hhuwp2RuQIS7-3w3WvuOfT2KI8uG8KcYNHB0IFst6qupSkuBxlOiIHqWZsklZqiuKmmQJVnO0Ag';
 
 const REPORT_DIR = join(process.cwd(), 'reports');
-const REPORT_PATH = join(REPORT_DIR, 'royal-commission-fail-report.csv');
+const REPORT_PATH = reportPathFor('royal-commission', REPORT_DIR);
 const SCREENSHOTS_DIR = join(process.cwd(), 'test-results', 'royal-commission');
 
-function csvEscape(value) {
-  return `"${String(value).replace(/"/g, '""')}"`;
-}
-
-function logFailure(step, expectedPhrases, actualText) {
-  const row = [
-    new Date().toISOString(),
-    step,
-    expectedPhrases.join(' | '),
-    actualText.slice(0, 400),
-  ]
-    .map(csvEscape)
-    .join(',') + '\n';
-  appendFileSync(REPORT_PATH, row);
-}
-
-async function send(page, input, text) {
-  await input.fill(text);
-  await page.getByRole('button').last().click();
-}
-
-async function getPageText(page) {
-  return page.evaluate(() => {
-    function collectText(root) {
-      let text = '';
-      for (const node of root.childNodes) {
-        if (node.nodeType === Node.TEXT_NODE) text += node.textContent + ' ';
-        else if (node.nodeType === Node.ELEMENT_NODE) {
-          if (node.shadowRoot) text += collectText(node.shadowRoot);
-          text += collectText(node);
-        }
-      }
-      return text;
-    }
-    return collectText(document.body);
-  });
-}
-
 async function assertPhrases(page, step, expectedPhrases) {
-  let matched = false;
-  for (const phrase of expectedPhrases) {
-    const count = await page.getByText(new RegExp(phrase, 'i')).count();
-    if (count > 0) {
-      matched = true;
-      console.log(`[PASS] "${step}": matched phrase "${phrase}"`);
-      break;
-    }
-  }
+  const fail = await checkPhraseGroups(page, [{ label: step, phrases: expectedPhrases }]);
 
-  if (!matched) {
-    const actualText = await getPageText(page);
-    logFailure(step, expectedPhrases, actualText);
+  if (fail) {
+    const actualText = await getAllFramesText(page);
+    logFailure(REPORT_PATH, [step, expectedPhrases.join(' | '), actualText]);
     const screenshotPath = join(SCREENSHOTS_DIR, `fail-${step}-${Date.now()}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true });
     console.log(`[FAIL] "${step}": none of [${expectedPhrases.join(' | ')}] found`);
     console.log(`[FAIL] Screenshot: ${screenshotPath}`);
+  } else {
+    console.log(`[PASS] "${step}": matched an expected phrase`);
   }
 
-  expect(matched, `[${step}] Expected one of: [${expectedPhrases.join(' | ')}]`).toBe(true);
+  expect(fail, `[${step}] Expected one of: [${expectedPhrases.join(' | ')}]`).toBeNull();
 }
 
 test.describe('KSA (Najdi) Royal Commission Q&A [Bilingual] - Regression', () => {
@@ -95,22 +53,16 @@ test.describe('KSA (Najdi) Royal Commission Q&A [Bilingual] - Regression', () =>
   test('greeting → Hello → services flow', async ({ page }) => {
     console.log('[INFO] Navigating to Royal Commission bot...');
     await navigateTo(page, BOT_URL);
-    await checkAndHandleCloudflare(page, '[ROYAL]', REPORT_DIR);
-
-    const chatOpened = await openChatWidget(page, {
+    await openChat(page, {
       prefix: '[ROYAL]',
+      reportDir: REPORT_DIR,
       labels: ['Text Chat', 'Chat', 'Start Chat'],
-      failScreenshotPath: join(REPORT_DIR, 'royal-open-btn-not-found.png'),
       timeoutMs: 60000,
     });
-    if (!chatOpened) throw new Error('[ROYAL] Text Chat button not found');
     console.log('[INFO] Clicked "Text Chat" button');
 
-    const input = page.getByRole('textbox');
-    await input.waitFor({ timeout: 30000 });
-
     console.log('[INFO] Waiting for Arabic greeting to load...');
-    await page.waitForTimeout(8000);
+    await waitForGreeting(page, { prefix: '[ROYAL]', reportDir: REPORT_DIR });
 
     // Step 3: validate Arabic greeting
     await assertPhrases(page, 'greeting', [
@@ -119,24 +71,28 @@ test.describe('KSA (Najdi) Royal Commission Q&A [Bilingual] - Regression', () =>
       'الجزاءات',
     ]);
 
-    // Step 4: send "Hello"
+    // Step 4-5: send "Hello" and validate response
     console.log('[INFO] Sending "Hello"...');
-    await send(page, input, 'Hello');
-    await page.waitForTimeout(10000);
-
-    // Step 5: validate response to "Hello"
+    const helloBaseline = await getAllFramesText(page);
+    await sendMessage(page, 'Hello');
+    await waitForBotResponse(page, {
+      prefix: '[ROYAL]', reportDir: REPORT_DIR,
+      baselineText: helloBaseline, sentText: 'Hello', timeoutMs: 45000,
+    });
     await assertPhrases(page, 'hello-response', [
       'Hello',
       'how can I help you today',
       'Royal Commission',
     ]);
 
-    // Step 6: send "tell me about your services"
+    // Step 6-7: send "tell me about your services" and validate response
     console.log('[INFO] Sending "tell me about your services"...');
-    await send(page, input, 'tell me about your services');
-    await page.waitForTimeout(10000);
-
-    // Step 7: validate services response
+    const servicesBaseline = await getAllFramesText(page);
+    await sendMessage(page, 'tell me about your services');
+    await waitForBotResponse(page, {
+      prefix: '[ROYAL]', reportDir: REPORT_DIR,
+      baselineText: servicesBaseline, sentText: 'tell me about your services', timeoutMs: 60000,
+    });
     await assertPhrases(page, 'services-response', [
       'Royal Commission for Jubail',
       'municipal violations and penalties',

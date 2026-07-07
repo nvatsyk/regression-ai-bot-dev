@@ -1,30 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { appendFileSync, mkdirSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { join } from 'path';
-import {
-  sleep, navigateTo, checkAndHandleCloudflare, openChatWidget,
-  waitForBotGreeting, waitForAnyNewOccurrence, sendMessage,
-} from './helpers/browser-utils.js';
+import { navigateTo, getAllFramesText } from './helpers/browser-utils.js';
+import { openChat } from './helpers/chat-launcher.js';
+import { waitForGreeting } from './helpers/greeting-helper.js';
+import { sendMessage, waitForBotResponse } from './helpers/response-helper.js';
+import { checkPhraseGroups, logFailure, reportPathFor, screenshotStage } from './helpers/logging-helper.js';
 
 const BOT_URL =
   'https://demo.nextlevel.ai/std/#config=G74AGORyTmV30UmJ5Pg7Qlsg0skBa-tW1AIrwKwtl8ASTE-2hwuaLGkUqT4zJ2Q0tf8p49v8pzVGTYw8oFqUQRkBPZQoqOmWhRCm59RE5Agv-safhtaOUTrlyhl03zxYwS3Q4TMCew2ggvQpWhuQIMr_342ufoc_F0cQZv1549Ab2HZzVFmSGFkmrsQJRFAlnphipLQyisPyNsdyCloA';
 
 const REPORT_DIR  = join(process.cwd(), 'reports');
-const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
+const REPORT_PATH = reportPathFor('chronilogix-bdr-simple', REPORT_DIR);
 const BUG_TITLE   = 'Chronilogix BDR mental health personal support flow';
 const TEST_NAME   = 'Chronilogix BDR mental health personal support flow';
-
-function csvEscape(v) {
-  return `"${String(v).replace(/"/g, '""')}"`;
-}
-
-function logFailure(stepLabel, failedPhrase, pageText) {
-  mkdirSync(REPORT_DIR, { recursive: true });
-  const row = [
-    new Date().toISOString(), TEST_NAME, BUG_TITLE, stepLabel, failedPhrase, pageText.slice(0, 400),
-  ].map(csvEscape).join(',') + '\n';
-  appendFileSync(REPORT_PATH, row);
-}
 
 test.describe('Chronilogix BDR — Mental Health Personal Support Flow (Simple)', () => {
   test(TEST_NAME, async ({ page }) => {
@@ -33,70 +22,57 @@ test.describe('Chronilogix BDR — Mental Health Personal Support Flow (Simple)'
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
     await navigateTo(page, BOT_URL);
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-startup.png') }).catch(() => {});
-    await checkAndHandleCloudflare(page, '[CHRON-S]', REPORT_DIR);
+    await screenshotStage(page, REPORT_DIR, 'chron-s', 'startup');
 
-    // ── Step 2: Capture baselines, open chat ──────────────────────────────────
-    const greetingPhrases = ['Hello', 'Hi', 'welcome', 'name', 'your name', 'help', 'assist', 'Chronilogix', 'Roni', 'support', 'today', 'How can'];
-    const greetingBase = {};
-    for (const p of greetingPhrases) {
-      greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    // ── Step 2: Open chat ─────────────────────────────────────────────────────
+    await openChat(page, { prefix: '[CHRON-S]', reportDir: REPORT_DIR });
+
+    // ── Step 3: Wait for + validate bot greeting ─────────────────────────────
+    await waitForGreeting(page, { prefix: '[CHRON-S]', reportDir: REPORT_DIR, timeoutMs: 70000 });
+    await screenshotStage(page, REPORT_DIR, 'chron-s', 'greeting');
+
+    const greetingFail = await checkPhraseGroups(page, [
+      { label: 'greeting acknowledgement', phrases: [
+        'Hello', 'Hi', 'welcome', 'name', 'your name', 'help', 'assist',
+        'Chronilogix', 'Roni', 'support', 'today', 'How can',
+      ]},
+    ]);
+    if (greetingFail) {
+      await screenshotStage(page, REPORT_DIR, 'chron-s', 'greeting-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, BUG_TITLE, 'Step 3: Greeting', greetingFail, '']);
     }
+    expect(greetingFail, 'Step 3: bot did not send a greeting').toBeNull();
 
-    const chatOpened = await openChatWidget(page, {
-      prefix: '[CHRON-S]',
-      failScreenshotPath: join(REPORT_DIR, 'chron-s-open-btn-not-found.png'),
-    });
-    if (!chatOpened) {
-      const vis = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('button,[role="button"]'))
-          .map(b => (b.innerText || b.textContent || '').trim()).filter(Boolean)
-      ).catch(() => []);
-      console.log('[CHRON-S] Chat button not found. Visible buttons:', vis);
-      throw new Error(`[CHRON-S] Chat button not found. Visible: ${vis.join(', ')}`);
-    }
-
-    // ── Step 3: Wait for bot greeting ────────────────────────────────────────
-    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 70000);
-    if (!greeting) {
-      await page.screenshot({ path: join(REPORT_DIR, 'chron-s-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', '');
-    }
-    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
-    console.log('[TEST] Greeting:', greeting);
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-greeting.png') }).catch(() => {});
-
-    // ── Step 4: Send "Natali" ─────────────────────────────────────────────────
-    const step5Poll = [
-      'Great', 'great', 'Nice', 'nice', 'Hello', 'Hi', 'thanks', 'Thank',
-      'Natali', 'natali', 'name', 'help', 'How', 'What', 'please', 'could',
-      'Chronilogix', 'regarding', 'assist', 'meet', 'welcome',
-    ];
-    const step5Base = {};
-    for (const p of step5Poll) {
-      step5Base[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
-    }
-
+    // ── Step 4-5: Send "Natali" and validate any bot response ────────────────
+    const nameBaseline = await getAllFramesText(page);
     await sendMessage(page, 'Natali');
-    console.log('[TEST] User message sent');
+    console.log('[CHRON-S] User message sent');
+    await waitForBotResponse(page, {
+      prefix: '[CHRON-S]', reportDir: REPORT_DIR,
+      baselineText: nameBaseline, sentText: 'Natali', timeoutMs: 60000,
+    });
+    await screenshotStage(page, REPORT_DIR, 'chron-s', 'after-name');
 
-    // ── Step 5: Wait for any bot response ────────────────────────────────────
-    const step5Arrived = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 60000);
-    if (!step5Arrived) {
-      await page.screenshot({ path: join(REPORT_DIR, 'chron-s-step5-fail.png') }).catch(() => {});
-      logFailure('Step 5: Name response', 'no bot response after name', '');
+    const step5Fail = await checkPhraseGroups(page, [
+      { label: 'name response', phrases: [
+        'Great', 'great', 'Nice', 'nice', 'Hello', 'Hi', 'thanks', 'Thank',
+        'Natali', 'natali', 'name', 'help', 'How', 'What', 'please', 'could',
+        'Chronilogix', 'regarding', 'assist', 'meet', 'welcome',
+      ]},
+    ]);
+    if (step5Fail) {
+      await screenshotStage(page, REPORT_DIR, 'chron-s', 'step5-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, BUG_TITLE, 'Step 5: Name response', step5Fail, '']);
     }
-    expect(step5Arrived, 'Step 5: bot gave no response after sending name').toBeTruthy();
-    console.log('[TEST] Bot response received:', step5Arrived);
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-after-name.png') }).catch(() => {});
+    expect(step5Fail, 'Step 5: bot gave no response after sending name').toBeNull();
 
-    // ── Step 6: Send "Mental Health" ─────────────────────────────────────────
+    // ── Step 6: Send "Mental Health" — test passes after this send ───────────
     await sendMessage(page, 'Mental Health');
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-after-mental-health.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'chron-s', 'after-mental-health');
 
-    // ── Step 7: Send "Myself" ─────────────────────────────────────────────────
+    // ── Step 7: Send "Myself" — test passes after this send ──────────────────
     await sendMessage(page, 'Myself');
-    await page.screenshot({ path: join(REPORT_DIR, 'chron-s-complete.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'chron-s', 'complete');
     console.log('[CHRON-S] Test complete — "Myself" sent successfully.');
   });
 });

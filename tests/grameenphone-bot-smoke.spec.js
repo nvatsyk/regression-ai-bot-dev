@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { writeFileSync, appendFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { navigateTo, getAllFramesText, waitForPageReady } from './helpers/browser-utils.js';
+import { openChat } from './helpers/chat-launcher.js';
+import { waitForGreeting } from './helpers/greeting-helper.js';
+import { sendMessage, waitForBotResponse } from './helpers/response-helper.js';
+import { logFailure } from './helpers/logging-helper.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -13,8 +18,9 @@ const REPORT_PATH = join(REPORT_DIR, 'grameenphone-report.csv');
 
 const GREETING_TIMEOUT  = 30000;  // max ms to wait for first bot greeting
 const RESPONSE_TIMEOUT  = 30000;  // max ms to wait for bot to finish a reply
-const STABLE_CHECKS     = 2;      // consecutive 1-s checks with no text change = "done"
 const SILENT_WAIT_MS    = 23000;  // 23 s between silent-trigger checks (3 s buffer)
+
+const PREFIX = '[GP]';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -22,97 +28,19 @@ const SILENT_WAIT_MS    = 23000;  // 23 s between silent-trigger checks (3 s buf
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-/** Recursively collect all visible text, piercing shadow DOM. */
-async function collectPageText(page) {
-  return page.evaluate(() => {
-    function walk(root) {
-      let text = '';
-      for (const node of root.childNodes) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          text += node.textContent + ' ';
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          if (node.shadowRoot) text += walk(node.shadowRoot);
-          text += walk(node);
-        }
-      }
-      return text;
-    }
-    return walk(document.body);
-  });
-}
-
-/** Poll until page text stops changing for STABLE_CHECKS × 1 s, or maxWait ms. */
-async function waitForBotResponse(page, maxWait = RESPONSE_TIMEOUT) {
-  let prev = await collectPageText(page);
-  const deadline = Date.now() + maxWait;
-  let stable = 0;
-  while (Date.now() < deadline) {
-    await sleep(1000);
-    const cur = await collectPageText(page);
-    if (cur === prev) {
-      if (++stable >= STABLE_CHECKS) return;
-    } else {
-      stable = 0;
-      prev = cur;
-    }
-  }
-}
-
-/**
- * Open the chat UI if it is behind a trigger button.
- * Falls back gracefully if the textbox is already visible (full-page embed).
- */
-async function openChat(page) {
-  const input = page.getByRole('textbox');
-  if (await input.isVisible().catch(() => false)) return;
-
-  // Try labelled "Text Chat" button first (common NextLevel widget pattern)
-  for (const label of ['Text Chat', 'Chat', 'Start Chat', 'Open Chat']) {
-    const btn = page.getByText(label, { exact: false }).first();
-    if (await btn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await btn.click();
-      await input.waitFor({ timeout: 30000 }).catch(() => {});
-      return;
-    }
-  }
-
-  // Fall back: click the first visible button and hope it opens the chat
-  const anyBtn = page.getByRole('button').first();
-  if (await anyBtn.isVisible().catch(() => false)) {
-    await anyBtn.click();
-    await sleep(2000);
-  }
-}
-
-/** Type text into the chat input and submit (Enter, with button fallback). */
-async function sendMessage(page, text) {
-  const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: 10000 });
-  await input.fill(text);
-  await input.press('Enter');
-  await sleep(400);
-  const still = await input.inputValue().catch(() => '');
-  if (still.trim() === text.trim()) {
-    // Enter didn't submit — click the Send button
-    await page.getByRole('button').last().click();
-  }
-}
-
-/** Append one failure row to the CSV report. */
-function logFailure(step, expectedPhrases, actualText) {
-  const esc = v => `"${String(v).replace(/"/g, '""')}"`;
-  const row = [
-    new Date().toISOString(),
-    step,
-    expectedPhrases.join(' | '),
-    actualText.slice(0, 500),
-  ].map(esc).join(',') + '\n';
-  appendFileSync(REPORT_PATH, row);
-}
-
 /** Structured console helper (visible in Playwright list reporter). */
 function logInfo(tag, msg) {
   console.log(`[${tag.toUpperCase()}] ${msg}`);
+}
+
+/** Send a message and wait for the bot's reply via the shared content-diff detector. */
+async function sendAndWaitForResponse(page, text, maxWait = RESPONSE_TIMEOUT) {
+  const baseline = await getAllFramesText(page);
+  await sendMessage(page, text);
+  return waitForBotResponse(page, {
+    prefix: PREFIX, reportDir: REPORT_DIR,
+    baselineText: baseline, sentText: text, timeoutMs: maxWait,
+  });
 }
 
 /**
@@ -120,14 +48,14 @@ function logInfo(tag, msg) {
  * appears in page text.  Takes a screenshot and logs CSV on failure.
  */
 async function assertResponse(page, step, expectedPhrases) {
-  const pageText = await collectPageText(page);
+  const pageText = await getAllFramesText(page);
   let matchedPhrase = null;
   for (const p of expectedPhrases) {
     if (new RegExp(p, 'i').test(pageText)) { matchedPhrase = p; break; }
   }
 
   if (!matchedPhrase) {
-    logFailure(step, expectedPhrases, pageText);
+    logFailure(REPORT_PATH, [step, expectedPhrases.join(' | '), pageText.slice(0, 500)]);
     const sPath = join(SCREENSHOTS_DIR, `fail-${step.replace(/[^a-z0-9]/gi, '_').slice(0, 60)}-${Date.now()}.png`);
     await page.screenshot({ path: sPath, fullPage: true }).catch(() => {});
     logInfo('FAIL', `"${step}" — none of [${expectedPhrases.join(' | ')}] found`);
@@ -148,43 +76,12 @@ async function assertResponse(page, step, expectedPhrases) {
  * Throws (fails the test) if the greeting does not appear within GREETING_TIMEOUT.
  */
 async function setupAndWaitForGreeting(page) {
-  await page.goto(BOT_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForLoadState('networkidle').catch(() => {});
-  await sleep(2000);
-  await openChat(page);
+  await navigateTo(page, BOT_URL);
+  await openChat(page, { prefix: PREFIX, reportDir: REPORT_DIR, labels: ['Text Chat', 'Chat', 'Start Chat', 'Open Chat'] });
 
   logInfo('INFO', 'Waiting for bot greeting (no user message sent yet)…');
-
-  await page.waitForFunction(
-    ({ timeout: _t }) => {
-      function walk(root) {
-        let t = '';
-        for (const n of root.childNodes) {
-          if (n.nodeType === Node.TEXT_NODE) t += n.textContent + ' ';
-          else if (n.nodeType === Node.ELEMENT_NODE) {
-            if (n.shadowRoot) t += walk(n.shadowRoot);
-            t += walk(n);
-          }
-        }
-        return t;
-      }
-      const text = walk(document.body).toLowerCase();
-      return (
-        text.includes('hello') ||
-        text.includes('hi') ||
-        text.includes('welcome') ||
-        text.includes('grameenphone') ||
-        text.includes('help you') ||
-        text.includes('how can i') ||
-        text.includes('how may i')
-      );
-    },
-    {},
-    { timeout: GREETING_TIMEOUT }
-  );
-
+  await waitForGreeting(page, { prefix: PREFIX, reportDir: REPORT_DIR, timeoutMs: GREETING_TIMEOUT });
   logInfo('INFO', 'Bot greeting detected.');
-  await sleep(2000); // allow full greeting to render
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -217,10 +114,16 @@ test.afterEach(async ({ page }, testInfo) => {
 
 test.describe('01 - Greeting Validation', () => {
   test('bot greets first — no user message sent beforehand', async ({ page }) => {
-    await page.goto(BOT_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle').catch(() => {});
-    await sleep(2000);
-    await openChat(page);
+    await navigateTo(page, BOT_URL);
+    await waitForPageReady(page, { timeoutMs: 30000, prefix: PREFIX });
+    // Skip openChat's own page-ready/Cloudflare checks here — this test measures
+    // raw greeting latency against a strict SLA, so the pre-open wait happens
+    // up front (matching the other tests' setup cost) rather than inside the
+    // timed section.
+    await openChat(page, {
+      prefix: PREFIX, reportDir: REPORT_DIR, labels: ['Text Chat', 'Chat', 'Start Chat', 'Open Chat'],
+      waitForReady: false, clearCloudflare: false,
+    });
 
     logInfo('INFO', 'No user message will be sent — measuring time to first greeting…');
     const t0 = Date.now();
@@ -229,29 +132,7 @@ test.describe('01 - Greeting Validation', () => {
     let greetingMs = 0;
 
     try {
-      await page.waitForFunction(
-        () => {
-          function walk(root) {
-            let t = '';
-            for (const n of root.childNodes) {
-              if (n.nodeType === Node.TEXT_NODE) t += n.textContent + ' ';
-              else if (n.nodeType === Node.ELEMENT_NODE) {
-                if (n.shadowRoot) t += walk(n.shadowRoot);
-                t += walk(n);
-              }
-            }
-            return t;
-          }
-          const text = walk(document.body).toLowerCase();
-          return (
-            text.includes('hello') || text.includes('hi') ||
-            text.includes('welcome') || text.includes('grameenphone') ||
-            text.includes('help you') || text.includes('how can i')
-          );
-        },
-        {},
-        { timeout: GREETING_TIMEOUT }
-      );
+      await waitForGreeting(page, { prefix: PREFIX, reportDir: REPORT_DIR, timeoutMs: GREETING_TIMEOUT });
       greetingDetected = true;
       greetingMs = Date.now() - t0;
       logInfo('INFO', `Greeting appeared in ${greetingMs} ms`);
@@ -286,8 +167,7 @@ test.describe('01 - Greeting Validation', () => {
 test.describe('02 - Q&A Scenarios', () => {
   test('Q01 — 5G service benefits and requirements', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, "What are the benefits of Grameenphone's 5G service, and what do I need to use it?");
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, "What are the benefits of Grameenphone's 5G service, and what do I need to use it?");
     await assertResponse(page, 'Q01-5G', [
       '5G', 'speed', 'network', 'device', 'compatible', 'benefit', 'coverage', 'high.speed',
     ]);
@@ -296,8 +176,7 @@ test.describe('02 - Q&A Scenarios', () => {
 
   test('Q02 — GPFI wireless broadband plans and devices', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'Tell me about GPFI. What kind of internet plans and devices do they offer for wireless broadband?');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'Tell me about GPFI. What kind of internet plans and devices do they offer for wireless broadband?');
     await assertResponse(page, 'Q02-GPFI', [
       'GPFI', 'internet', 'broadband', 'plan', 'wireless', 'device', 'data', 'package',
     ]);
@@ -306,8 +185,7 @@ test.describe('02 - Q&A Scenarios', () => {
 
   test('Q03 — Corporate Messaging / Bulk SMS pricing tiers', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, "How can businesses use Grameenphone's Corporate Messaging (Bulk SMS) service? What are the pricing tiers?");
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, "How can businesses use Grameenphone's Corporate Messaging (Bulk SMS) service? What are the pricing tiers?");
     await assertResponse(page, 'Q03-BulkSMS', [
       'SMS', 'bulk', 'corporate', 'messaging', 'business', 'pricing', 'tier', 'enterprise', 'campaign',
     ]);
@@ -316,8 +194,7 @@ test.describe('02 - Q&A Scenarios', () => {
 
   test('Q04 — GPStar loyalty tiers and discounts', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, "I'm interested in the GPStar loyalty program. What are the membership tiers and what kind of discounts can I get?");
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, "I'm interested in the GPStar loyalty program. What are the membership tiers and what kind of discounts can I get?");
     await assertResponse(page, 'Q04-GPStar', [
       'GPStar', 'loyalty', 'tier', 'discount', 'reward', 'membership', 'point', 'benefit',
     ]);
@@ -326,8 +203,7 @@ test.describe('02 - Q&A Scenarios', () => {
 
   test('Q05 — Grameenphone Accelerator program for startups', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'What is the Grameenphone Accelerator program, and what kind of support does it offer to startups?');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'What is the Grameenphone Accelerator program, and what kind of support does it offer to startups?');
     await assertResponse(page, 'Q05-Accelerator', [
       'accelerator', 'startup', 'support', 'program', 'innovation', 'entrepreneur', 'incubat', 'grameenphone',
     ]);
@@ -336,8 +212,7 @@ test.describe('02 - Q&A Scenarios', () => {
 
   test('Q06 — USSD codes for balance check and package cancellation', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'Can you tell me how to check my internet balance and how to cancel an internet package using USSD codes?');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'Can you tell me how to check my internet balance and how to cancel an internet package using USSD codes?');
     await assertResponse(page, 'Q06-USSD', [
       'USSD', '\\*', '#', 'balance', 'cancel', 'package', 'internet', 'code', 'dial',
     ]);
@@ -346,8 +221,7 @@ test.describe('02 - Q&A Scenarios', () => {
 
   test('Q07 — MyGP app features and service management', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'What are the main features of the MyGP app, and how does it help manage my Grameenphone services?');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'What are the main features of the MyGP app, and how does it help manage my Grameenphone services?');
     await assertResponse(page, 'Q07-MyGP', [
       'MyGP', 'app', 'feature', 'manage', 'service', 'recharge', 'balance', 'account', 'download',
     ]);
@@ -356,8 +230,7 @@ test.describe('02 - Q&A Scenarios', () => {
 
   test('Q08 — Service center locations and operating hours', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'Where can I find a Grameenphone service center, and what are their typical operating hours?');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'Where can I find a Grameenphone service center, and what are their typical operating hours?');
     await assertResponse(page, 'Q08-ServiceCenter', [
       'service center', 'location', 'hour', 'open', 'branch', 'address', 'operating', 'visit',
     ]);
@@ -366,8 +239,7 @@ test.describe('02 - Q&A Scenarios', () => {
 
   test('Q09 — IoT solutions for businesses', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, "What are Grameenphone's IoT solutions for businesses, and what specific problems do they solve?");
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, "What are Grameenphone's IoT solutions for businesses, and what specific problems do they solve?");
     await assertResponse(page, 'Q09-IoT', [
       'IoT', 'solution', 'business', 'connect', 'device', 'smart', 'sensor', 'automat', 'track', 'monitor',
     ]);
@@ -376,8 +248,7 @@ test.describe('02 - Q&A Scenarios', () => {
 
   test('Q10 — International roaming with prepaid balance', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'Does Grameenphone offer international roaming with prepaid balance, and how does that work?');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'Does Grameenphone offer international roaming with prepaid balance, and how does that work?');
     await assertResponse(page, 'Q10-Roaming', [
       'roaming', 'international', 'prepaid', 'abroad', 'balance', 'activate', 'country', 'charge', 'travel',
     ]);
@@ -392,8 +263,7 @@ test.describe('02 - Q&A Scenarios', () => {
 test.describe('03 - Inbound Support Use Cases', () => {
   test('Support — balance and usage inquiry', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'I want to check my balance and how much data I have left');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'I want to check my balance and how much data I have left');
     await assertResponse(page, 'support-balance', [
       'balance', 'data', 'check', 'USSD', 'MyGP', 'usage', 'remaining', 'dial',
     ]);
@@ -402,8 +272,7 @@ test.describe('03 - Inbound Support Use Cases', () => {
 
   test('Support — internet pack purchase and troubleshooting', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, "I bought an internet pack but it's not working. My data is not connecting even after recharging.");
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, "I bought an internet pack but it's not working. My data is not connecting even after recharging.");
     await assertResponse(page, 'support-internet', [
       'internet', 'data', 'pack', 'troubleshoot', 'restart', 'APN', 'network', 'setting', 'issue', 'help',
     ]);
@@ -412,8 +281,7 @@ test.describe('03 - Inbound Support Use Cases', () => {
 
   test('Support — recharge / top-up failure', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'My recharge failed but the money was deducted from my bank. What should I do?');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'My recharge failed but the money was deducted from my bank. What should I do?');
     await assertResponse(page, 'support-recharge', [
       'recharge', 'deduct', 'refund', 'bank', 'transaction', 'contact', 'reversal', 'sorry', 'help',
     ]);
@@ -422,8 +290,7 @@ test.describe('03 - Inbound Support Use Cases', () => {
 
   test('Support — unwanted VAS / automatic balance deduction', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'My balance keeps getting deducted automatically. I think I have some unwanted VAS services activated. How do I stop this?');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'My balance keeps getting deducted automatically. I think I have some unwanted VAS services activated. How do I stop this?');
     await assertResponse(page, 'support-vas', [
       'VAS', 'value.added', 'deduct', 'unsubscribe', 'cancel', 'stop', 'service', 'deactivat', 'USSD',
     ]);
@@ -432,8 +299,7 @@ test.describe('03 - Inbound Support Use Cases', () => {
 
   test('Support — network issue / call drop complaint', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'I keep experiencing call drops and very poor network coverage in my area. This has been happening for the past few days.');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'I keep experiencing call drops and very poor network coverage in my area. This has been happening for the past few days.');
     await assertResponse(page, 'support-network', [
       'network', 'coverage', 'call drop', 'complaint', 'area', 'report', 'sorry', 'apologize', 'team', 'investigate',
     ]);
@@ -452,25 +318,24 @@ test.describe('04 - Silent Trigger Tests', () => {
     await setupAndWaitForGreeting(page);
 
     // Establish context with one message so the bot has a reference point
-    await sendMessage(page, 'Hello, I need help with my Grameenphone account.');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'Hello, I need help with my Grameenphone account.');
 
     logInfo('INFO', 'Context set. Going silent — tracking inactivity triggers…');
 
     // ── 20-second trigger ───────────────────────────────────────────────────
-    const snapshot0 = await collectPageText(page);
+    const snapshot0 = await getAllFramesText(page);
     const t1 = Date.now();
     await sleep(SILENT_WAIT_MS); // 23 s
     const elapsed1 = Date.now() - t1;
     logInfo('TIMER', `20 s window elapsed: ${elapsed1} ms`);
 
-    const text20s = await collectPageText(page);
+    const text20s = await getAllFramesText(page);
     const delta20s = text20s.slice(snapshot0.length).toLowerCase();
     logInfo('TRIGGER-20S', `New text: "${delta20s.slice(0, 200)}"`);
 
     const trigger20Matched = /still there|are you there|still with us|you there|need help|hello\?|hey there/i.test(delta20s);
     if (!trigger20Matched) {
-      logFailure('silent-trigger-20s', ['still there', 'are you there', 'still with us'], delta20s);
+      logFailure(REPORT_PATH, ['silent-trigger-20s', ['still there', 'are you there', 'still with us'].join(' | '), delta20s]);
       await page.screenshot({ path: join(SCREENSHOTS_DIR, 'fail-silent-20s.png'), fullPage: true });
       logInfo('FAIL', '20 s silent trigger — expected re-engagement phrase not found');
     } else {
@@ -479,19 +344,19 @@ test.describe('04 - Silent Trigger Tests', () => {
     expect(trigger20Matched, `[silent-trigger-20s] Expected a re-engagement phrase at ~20 s.\nGot: "${delta20s.slice(0, 200)}"`).toBe(true);
 
     // ── 40-second trigger ───────────────────────────────────────────────────
-    const snapshot1 = await collectPageText(page);
+    const snapshot1 = await getAllFramesText(page);
     const t2 = Date.now();
     await sleep(SILENT_WAIT_MS); // another 23 s
     const elapsed2 = Date.now() - t2;
     logInfo('TIMER', `40 s window elapsed: ${elapsed2} ms`);
 
-    const text40s = await collectPageText(page);
+    const text40s = await getAllFramesText(page);
     const delta40s = text40s.slice(snapshot1.length).toLowerCase();
     logInfo('TRIGGER-40S', `New text: "${delta40s.slice(0, 200)}"`);
 
     const trigger40Matched = /no problem|don.t feel like|another time|continue later|feel like chatting|take your time/i.test(delta40s);
     if (!trigger40Matched) {
-      logFailure('silent-trigger-40s', ["no problem", "don't feel like chatting", "another time"], delta40s);
+      logFailure(REPORT_PATH, ['silent-trigger-40s', ["no problem", "don't feel like chatting", "another time"].join(' | '), delta40s]);
       await page.screenshot({ path: join(SCREENSHOTS_DIR, 'fail-silent-40s.png'), fullPage: true });
       logInfo('FAIL', '40 s silent trigger — expected soft-exit phrase not found');
     } else {
@@ -500,19 +365,19 @@ test.describe('04 - Silent Trigger Tests', () => {
     expect(trigger40Matched, `[silent-trigger-40s] Expected a soft-exit phrase at ~40 s.\nGot: "${delta40s.slice(0, 200)}"`).toBe(true);
 
     // ── 60-second trigger ───────────────────────────────────────────────────
-    const snapshot2 = await collectPageText(page);
+    const snapshot2 = await getAllFramesText(page);
     const t3 = Date.now();
     await sleep(SILENT_WAIT_MS); // another 23 s
     const elapsed3 = Date.now() - t3;
     logInfo('TIMER', `60 s window elapsed: ${elapsed3} ms`);
 
-    const text60s = await collectPageText(page);
+    const text60s = await getAllFramesText(page);
     const delta60s = text60s.slice(snapshot2.length).toLowerCase();
     logInfo('TRIGGER-60S', `New text: "${delta60s.slice(0, 200)}"`);
 
     const trigger60Matched = /\bbye\b|goodbye|chat later|take care|talk later|see you/i.test(delta60s);
     if (!trigger60Matched) {
-      logFailure('silent-trigger-60s', ['bye', 'goodbye', 'chat later', 'take care'], delta60s);
+      logFailure(REPORT_PATH, ['silent-trigger-60s', ['bye', 'goodbye', 'chat later', 'take care'].join(' | '), delta60s]);
       await page.screenshot({ path: join(SCREENSHOTS_DIR, 'fail-silent-60s.png'), fullPage: true });
       logInfo('FAIL', '60 s silent trigger — expected farewell phrase not found');
     } else {
@@ -528,13 +393,12 @@ test.describe('04 - Silent Trigger Tests', () => {
     test.setTimeout(300000);
 
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'Hi there, just browsing for now');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'Hi there, just browsing for now');
 
     logInfo('INFO', 'Waiting 70 s for all triggers to fire then checking for duplicates…');
     await sleep(72000);
 
-    const fullText = await collectPageText(page);
+    const fullText = await getAllFramesText(page);
     await page.screenshot({ path: join(SCREENSHOTS_DIR, 'silent-trigger-duplicate-check.png'), fullPage: true });
 
     const stillThereCount = (fullText.match(/still there/gi) || []).length;
@@ -564,52 +428,47 @@ test.describe('05 - Human Handoff Tests', () => {
 
   test('handoff trigger: "Connect me to a human agent"', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'Connect me to a human agent');
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, 'Connect me to a human agent', 20000);
     await assertResponse(page, 'handoff-connect-human-agent', HANDOFF_RESPONSE_PHRASES);
     await page.screenshot({ path: join(SCREENSHOTS_DIR, 'handoff-connect-human.png'), fullPage: true });
   });
 
   test('handoff trigger: "I want to talk to a human"', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'I want to talk to a human');
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, 'I want to talk to a human', 20000);
     await assertResponse(page, 'handoff-talk-human', HANDOFF_RESPONSE_PHRASES);
     await page.screenshot({ path: join(SCREENSHOTS_DIR, 'handoff-talk-human.png'), fullPage: true });
   });
 
   test('handoff trigger: "Transfer me to an operator"', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'Transfer me to an operator');
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, 'Transfer me to an operator', 20000);
     await assertResponse(page, 'handoff-transfer-operator', HANDOFF_RESPONSE_PHRASES);
     await page.screenshot({ path: join(SCREENSHOTS_DIR, 'handoff-transfer-operator.png'), fullPage: true });
   });
 
   test('handoff trigger: "Can I speak with support?"', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'Can I speak with support?');
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, 'Can I speak with support?', 20000);
     await assertResponse(page, 'handoff-speak-support', HANDOFF_RESPONSE_PHRASES);
     await page.screenshot({ path: join(SCREENSHOTS_DIR, 'handoff-speak-support.png'), fullPage: true });
   });
 
   test('fallback message appears when no agent is available', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'I need to speak with a human agent right now, it is urgent');
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, 'I need to speak with a human agent right now, it is urgent', 20000);
 
     // Primary: handoff starts
     await assertResponse(page, 'handoff-urgent-start', HANDOFF_RESPONSE_PHRASES);
 
     // Secondary: if no agent available, a proper fallback must be shown
-    const pageText = await collectPageText(page);
+    const pageText = await getAllFramesText(page);
     const hasFallback = /busy|unavailable|ticket|call you back|callback|raise a ticket|help you with|assist/i.test(pageText);
 
     logInfo('INFO', `Fallback phrase present: ${hasFallback}`);
     // Log but do not hard-fail — agent availability depends on live staffing
     if (!hasFallback) {
-      logFailure('handoff-fallback', ['busy', 'ticket', 'call you back', 'callback'], pageText);
+      logFailure(REPORT_PATH, ['handoff-fallback', ['busy', 'ticket', 'call you back', 'callback'].join(' | '), pageText.slice(0, 500)]);
       await page.screenshot({ path: join(SCREENSHOTS_DIR, 'warn-handoff-no-fallback.png'), fullPage: true });
       logInfo('WARN', 'Handoff fallback phrase not found — agent may actually be connected');
     }
@@ -630,32 +489,28 @@ test.describe('06 - Hard Escalation Tests', () => {
 
   test('user mentions BTRC — immediate escalation expected', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, "This is unacceptable. I am going to report this to BTRC if you don't fix it now.");
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, "This is unacceptable. I am going to report this to BTRC if you don't fix it now.", 20000);
     await assertResponse(page, 'escalation-BTRC', ESCALATION_PHRASES);
     await page.screenshot({ path: join(SCREENSHOTS_DIR, 'escalation-btrc.png'), fullPage: true });
   });
 
   test('user requests compensation / refund outside policy', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'I want compensation for the poor service. You should give me a full refund for last month.');
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, 'I want compensation for the poor service. You should give me a full refund for last month.', 20000);
     await assertResponse(page, 'escalation-compensation', ESCALATION_PHRASES);
     await page.screenshot({ path: join(SCREENSHOTS_DIR, 'escalation-compensation.png'), fullPage: true });
   });
 
   test('user says this is their third repeated complaint', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'This is the third time I am complaining about the same issue and nothing has been done.');
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, 'This is the third time I am complaining about the same issue and nothing has been done.', 20000);
     await assertResponse(page, 'escalation-repeat-complaint', ESCALATION_PHRASES);
     await page.screenshot({ path: join(SCREENSHOTS_DIR, 'escalation-repeat.png'), fullPage: true });
   });
 
   test('user missed important business call due to network failure', async ({ page }) => {
     await setupAndWaitForGreeting(page);
-    await sendMessage(page, 'I missed an important business call because of your network failure. This cost me a major deal. I need to speak to a manager.');
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, 'I missed an important business call because of your network failure. This cost me a major deal. I need to speak to a manager.', 20000);
     await assertResponse(page, 'escalation-business-loss', ESCALATION_PHRASES);
     await page.screenshot({ path: join(SCREENSHOTS_DIR, 'escalation-business-call.png'), fullPage: true });
   });
@@ -664,21 +519,19 @@ test.describe('06 - Hard Escalation Tests', () => {
     await setupAndWaitForGreeting(page);
 
     // Build context: network complaint first
-    await sendMessage(page, 'My network has been down for two days and none of your fixes have worked.');
-    await waitForBotResponse(page);
+    await sendAndWaitForResponse(page, 'My network has been down for two days and none of your fixes have worked.');
 
     // Hard escalation trigger
-    await sendMessage(page, 'This is absolutely ridiculous! I demand to speak to a supervisor IMMEDIATELY. No more troubleshooting steps!');
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, 'This is absolutely ridiculous! I demand to speak to a supervisor IMMEDIATELY. No more troubleshooting steps!', 20000);
 
-    const pageText = await collectPageText(page);
+    const pageText = await getAllFramesText(page);
 
     // Verify bot stopped offering generic troubleshooting tips
     const continuesGeneric = /restart.*phone|turn.*off.*on|reset.*APN|check.*setting|try.*airplane/i.test(
       pageText.split('\n').slice(-10).join(' ')
     );
     if (continuesGeneric) {
-      logFailure('escalation-no-generic', ['should escalate, not troubleshoot'], pageText);
+      logFailure(REPORT_PATH, ['escalation-no-generic', 'should escalate, not troubleshoot', pageText.slice(0, 500)]);
       await page.screenshot({ path: join(SCREENSHOTS_DIR, 'fail-escalation-generic.png'), fullPage: true });
       logInfo('FAIL', 'Bot continued generic troubleshooting after escalation trigger');
     }
@@ -692,17 +545,12 @@ test.describe('06 - Hard Escalation Tests', () => {
   test('multi-turn escalation: bot stops generic steps after explicit supervisor request', async ({ page }) => {
     await setupAndWaitForGreeting(page);
 
-    await sendMessage(page, 'I have no network signal for the past 3 hours in Dhaka.');
-    await waitForBotResponse(page);
-
-    await sendMessage(page, 'I have already tried restarting. Nothing works.');
-    await waitForBotResponse(page);
-
-    await sendMessage(page, "I've tried everything you suggested. I want a supervisor now — stop the scripted responses.");
-    await waitForBotResponse(page, 20000);
+    await sendAndWaitForResponse(page, 'I have no network signal for the past 3 hours in Dhaka.');
+    await sendAndWaitForResponse(page, 'I have already tried restarting. Nothing works.');
+    await sendAndWaitForResponse(page, "I've tried everything you suggested. I want a supervisor now — stop the scripted responses.", 20000);
 
     // Last N lines should NOT contain further generic steps
-    const pageText = await collectPageText(page);
+    const pageText = await getAllFramesText(page);
     const lastLines = pageText.split('\n').slice(-8).join(' ');
     const stillGeneric = /try.*restart|disable.*enable|reset.*network|airplane mode/i.test(lastLines);
 

@@ -55,6 +55,14 @@ jobs:
           path: playwright-report-royal-commission/
           if-no-files-found: ignore
 
+      - name: Upload Royal Commission reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: royal-commission-reports
+          path: reports/
+          if-no-files-found: ignore
+
       - name: Slack Royal Commission PASS notification
         if: steps.royal_commission.outcome == 'success'
         uses: slackapi/slack-github-action@v2.0.0
@@ -92,6 +100,14 @@ jobs:
         with:
           name: etihad-chatbot-playwright-report
           path: playwright-report-etihad-chatbot/
+          if-no-files-found: ignore
+
+      - name: Upload Etihad ChatBot reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: etihad-chatbot-reports
+          path: reports/
           if-no-files-found: ignore
 
       - name: Slack Etihad ChatBot PASS notification
@@ -133,6 +149,14 @@ jobs:
           path: playwright-report-heck-assistant/
           if-no-files-found: ignore
 
+      - name: Upload Heck Agency Assistant reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heck-assistant-reports
+          path: reports/
+          if-no-files-found: ignore
+
       - name: Slack Heck Agency Assistant PASS notification
         if: steps.heck_assistant.outcome == 'success'
         uses: slackapi/slack-github-action@v2.0.0
@@ -170,6 +194,14 @@ jobs:
         with:
           name: vodafone-assistant-playwright-report
           path: playwright-report-vodafone-assistant/
+          if-no-files-found: ignore
+
+      - name: Upload Vodafone Assistant reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vodafone-assistant-reports
+          path: reports/
           if-no-files-found: ignore
 
       - name: Slack Vodafone Assistant PASS notification

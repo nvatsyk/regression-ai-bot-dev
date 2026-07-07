@@ -55,6 +55,14 @@ jobs:
           path: playwright-report-keyless-english/
           if-no-files-found: ignore
 
+      - name: Upload Keyless English reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: keyless-english-reports
+          path: reports/
+          if-no-files-found: ignore
+
       - name: Slack Keyless PASS notification
         if: ${{ steps.keyless.outcome == 'success' }}
         uses: slackapi/slack-github-action@v2.0.0
@@ -92,6 +100,14 @@ jobs:
         with:
           name: chronilogix-bdr-playwright-report
           path: playwright-report-chronilogix-bdr/
+          if-no-files-found: ignore
+
+      - name: Upload Chronilogix BDR reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronilogix-bdr-reports
+          path: reports/
           if-no-files-found: ignore
 
       - name: Slack Chronilogix BDR PASS notification

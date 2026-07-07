@@ -55,6 +55,14 @@ jobs:
           path: playwright-report-famatechnologies-bdr/
           if-no-files-found: ignore
 
+      - name: Upload Famatechnologies BDR reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: famatechnologies-bdr-reports
+          path: reports/
+          if-no-files-found: ignore
+
       - name: Slack Famatechnologies BDR PASS notification
         if: steps.fama.outcome == 'success'
         uses: slackapi/slack-github-action@v2.0.0
@@ -92,6 +100,14 @@ jobs:
         with:
           name: solix-bdr-playwright-report
           path: playwright-report-solix-bdr/
+          if-no-files-found: ignore
+
+      - name: Upload Solix BDR reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: solix-bdr-reports
+          path: reports/
           if-no-files-found: ignore
 
       - name: Slack Solix BDR PASS notification
@@ -133,6 +149,14 @@ jobs:
           path: playwright-report-spsoft-bdr/
           if-no-files-found: ignore
 
+      - name: Upload SPsoft BDR reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spsoft-bdr-reports
+          path: reports/
+          if-no-files-found: ignore
+
       - name: Slack SPsoft BDR PASS notification
         if: steps.spsoft.outcome == 'success'
         uses: slackapi/slack-github-action@v2.0.0
@@ -170,6 +194,14 @@ jobs:
         with:
           name: nextlevel-ai-bdr-playwright-report
           path: playwright-report-nextlevel-ai-bdr/
+          if-no-files-found: ignore
+
+      - name: Upload Nextlevel.ai BDR reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextlevel-ai-bdr-reports
+          path: reports/
           if-no-files-found: ignore
 
       - name: Slack Nextlevel.ai BDR PASS notification
@@ -211,6 +243,14 @@ jobs:
           path: playwright-report-merkel-ltd/
           if-no-files-found: ignore
 
+      - name: Upload Merkel LTD reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merkel-ltd-reports
+          path: reports/
+          if-no-files-found: ignore
+
       - name: Slack Merkel LTD PASS notification
         if: steps.merkel.outcome == 'success'
         uses: slackapi/slack-github-action@v2.0.0
@@ -248,6 +288,14 @@ jobs:
         with:
           name: jak-delivery-playwright-report
           path: playwright-report-jak-delivery/
+          if-no-files-found: ignore
+
+      - name: Upload JAKDelivery reports (screenshots + CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jak-delivery-reports
+          path: reports/
           if-no-files-found: ignore
 
       - name: Slack JAKDelivery PASS notification

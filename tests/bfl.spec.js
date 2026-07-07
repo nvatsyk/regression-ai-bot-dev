@@ -1,63 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { appendFileSync, mkdirSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { join } from 'path';
+import { navigateTo, getAllFramesText } from './helpers/browser-utils.js';
+import { openChat } from './helpers/chat-launcher.js';
+import { sendMessage } from './helpers/response-helper.js';
+import { logFailure, reportPathFor, screenshotStage } from './helpers/logging-helper.js';
 
 const BOT_URL =
   'https://demo.nextlevel.ai/std/#config=G74AmBQhSeflnMr2okssO_yM0BaIdHLA_ltRC6wAs7ZcAkq0MKGT2-GHo2UlmZ5rzshsm-BTJXfxo7VmQ5lFSLcsQZshM5Q4bJiOg1BM322ogCNy0Tf-dGS4ZuVWhDviwDrY4S3E8JmAu4ZQQ_aU7A3IEBf_7wZr3_HPJzFE-XDemFkDR2dbciXbkjRKVWyLEj1NpjSWNanV4XnPsgVHVdEK';
 
-const REPORT_DIR = join(process.cwd(), 'reports');
-const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
+const REPORT_DIR  = join(process.cwd(), 'reports');
+const REPORT_PATH = reportPathFor('bfl', REPORT_DIR);
 
 // Node.js-level sleep — survives even when the browser page is closed.
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-function csvEscape(value) {
-  return `"${String(value).replace(/"/g, '""')}"`;
-}
-
-function logFailure(testName, reason, actualText) {
-  mkdirSync(REPORT_DIR, { recursive: true });
-  const row = [
-    new Date().toISOString(),
-    testName,
-    reason,
-    actualText.slice(0, 400),
-  ]
-    .map(csvEscape)
-    .join(',') + '\n';
-  appendFileSync(REPORT_PATH, row);
-}
-
-async function collectPageText(page) {
-  return page.evaluate(() => {
-    function collectText(root) {
-      let text = '';
-      for (const node of root.childNodes) {
-        if (node.nodeType === Node.TEXT_NODE) text += node.textContent + ' ';
-        else if (node.nodeType === Node.ELEMENT_NODE) {
-          if (node.shadowRoot) text += collectText(node.shadowRoot);
-          text += collectText(node);
-        }
-      }
-      return text;
-    }
-    return collectText(document.body);
-  });
-}
-
-// Fill textbox, try Enter, fall back to clicking the Send button.
-async function sendMessage(page, text) {
-  const input = page.getByRole('textbox');
-  await input.waitFor({ timeout: 30000 });
-  await input.fill(text);
-  await input.press('Enter');
-  await sleep(500);
-  const stillFilled = await input.inputValue().catch(() => '');
-  if (stillFilled.trim() === text.trim()) {
-    await page.getByRole('button').last().click();
-  }
-  await sleep(8000);
-}
 
 // Wait for a visible element and click it.
 // exact=true (default) prevents short words like "No" from matching "Not sure".
@@ -95,25 +51,10 @@ test.describe('BFL - Onboarding Regression', () => {
     const testName = 'BFL remembers user after reopen';
 
     mkdirSync(REPORT_DIR, { recursive: true });
-    await page.goto(BOT_URL);
 
-    // Wait for the widget to load and "Text Chat" to appear anywhere in the DOM.
-    await page.waitForFunction(
-      () => {
-        function findText(root, needle) {
-          for (const node of root.querySelectorAll('*')) {
-            if (node.shadowRoot && findText(node.shadowRoot, needle)) return true;
-            if (node.textContent && node.textContent.trim() === needle) return true;
-          }
-          return false;
-        }
-        return findText(document, 'Text Chat');
-      },
-      { timeout: 60000 }
-    );
-
-    await page.screenshot({ path: join(REPORT_DIR, 'bfl-startup.png') });
-    await page.getByText('Text Chat').first().click();
+    await navigateTo(page, BOT_URL);
+    await openChat(page, { prefix: '[BFL]', reportDir: REPORT_DIR, labels: ['Text Chat'] });
+    await screenshotStage(page, REPORT_DIR, 'bfl', 'startup');
 
     const input = page.getByRole('textbox');
     await input.waitFor({ timeout: 30000 });
@@ -128,7 +69,7 @@ test.describe('BFL - Onboarding Regression', () => {
     await tryClickButton(page, 'Good Spouse/Partner');
     await page.getByRole('button').last().click();
     await sleep(10000);
-    await page.screenshot({ path: join(REPORT_DIR, 'bfl-after-values.png') });
+    await screenshotStage(page, REPORT_DIR, 'bfl', 'after-values');
 
     // ── Onboarding sequence ────────────────────────────────────────────────────
     // Fixed sequence recorded from a real session. tryClickButton silently skips
@@ -150,12 +91,12 @@ test.describe('BFL - Onboarding Regression', () => {
     await tryClickButton(page, 'B) Good.',                   true);
     await tryClickButton(page, 'A) Excellent.',              true);
 
-    await page.screenshot({ path: join(REPORT_DIR, 'bfl-onboarding-complete.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'bfl', 'onboarding-complete');
 
     // ── Close the popup ───────────────────────────────────────────────────────
     // The × SVG button lives at ~(1233, 217) confirmed by bfl-debug-point-scan.json.
     // page.mouse.click dispatches real OS-level events through shadow DOM.
-    await page.screenshot({ path: join(REPORT_DIR, 'bfl-before-close.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'bfl', 'before-close');
     const closeCandidates = [
       [1233, 217], [1230, 214], [1236, 220], [1233, 211], [1224, 217],
     ];
@@ -182,7 +123,7 @@ test.describe('BFL - Onboarding Regression', () => {
       }).catch(() => true);
       if (popupGone) break;
     }
-    await page.screenshot({ path: join(REPORT_DIR, 'bfl-after-close.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'bfl', 'after-close');
 
     // ── Wait for session to be persisted (2 minutes) ──────────────────────────
     // Node.js sleep — works regardless of whether the browser page is alive.
@@ -193,28 +134,12 @@ test.describe('BFL - Onboarding Regression', () => {
     let activePage = page;
     if (page.isClosed()) {
       activePage = await context.newPage();
-      await activePage.goto(BOT_URL);
-      await activePage.waitForFunction(
-        () => {
-          function findText(root, needle) {
-            for (const node of root.querySelectorAll('*')) {
-              if (node.shadowRoot && findText(node.shadowRoot, needle)) return true;
-              if (node.textContent && node.textContent.trim() === needle) return true;
-            }
-            return false;
-          }
-          return findText(document, 'Text Chat');
-        },
-        { timeout: 60000 }
-      );
+      await navigateTo(activePage, BOT_URL);
     }
-
-    const textChatBtn = activePage.getByText('Text Chat').first();
-    await textChatBtn.waitFor({ timeout: 30000 });
-    await textChatBtn.click();
+    await openChat(activePage, { prefix: '[BFL]', reportDir: REPORT_DIR, labels: ['Text Chat'] });
     await sleep(15000);
     await sendMessage(activePage, 'good');
-    await activePage.screenshot({ path: join(REPORT_DIR, 'bfl-after-reopen.png') });
+    await screenshotStage(activePage, REPORT_DIR, 'bfl', 'after-reopen');
 
     const failPhrases = [
       'please finish the onboarding first',
@@ -235,12 +160,12 @@ test.describe('BFL - Onboarding Regression', () => {
       (await activePage.getByText('How are you feeling today', { exact: false }).count()) > 0;
 
     if (failMatch || !passName || !passContext) {
-      await activePage.screenshot({ path: join(REPORT_DIR, 'bfl-reopen-fail.png') });
-      const pageText = await collectPageText(activePage);
+      await screenshotStage(activePage, REPORT_DIR, 'bfl', 'reopen-fail');
+      const pageText = await getAllFramesText(activePage);
       const reason = failMatch
         ? `Fail phrase detected: "${failMatch}"`
         : `Pass conditions not met — name found: ${passName}, context found: ${passContext}`;
-      logFailure(testName, reason, pageText);
+      logFailure(REPORT_PATH, [testName, reason, pageText]);
     }
 
     expect(failMatch, `Fail phrase detected: "${failMatch}"`).toBeNull();

@@ -1,40 +1,17 @@
 import { test, expect } from '@playwright/test';
-import { appendFileSync, mkdirSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { join } from 'path';
-import {
-  sleep, navigateTo, checkAndHandleCloudflare, openChatWidget,
-  waitForAnyNewOccurrence, sendMessage,
-} from './helpers/browser-utils.js';
+import { sleep, navigateTo, getAllFramesText } from './helpers/browser-utils.js';
+import { openChat } from './helpers/chat-launcher.js';
+import { waitForGreeting } from './helpers/greeting-helper.js';
+import { sendMessage, waitForBotResponse } from './helpers/response-helper.js';
+import { checkPhraseGroups, logFailure, reportPathFor, screenshotStage } from './helpers/logging-helper.js';
 
 const BOT_URL = 'https://sdemo.nextlevel.ai/etihad-chatbot';
 
 const REPORT_DIR  = join(process.cwd(), 'reports');
-const REPORT_PATH = join(REPORT_DIR, 'etihad-chatbot-fail-report.csv');
+const REPORT_PATH = reportPathFor('etihad-chatbot', REPORT_DIR);
 const TEST_NAME   = 'Etihad Chatbot — Greeting and Services Flow';
-
-function csvEscape(v) {
-  return `"${String(v).replace(/"/g, '""')}"`;
-}
-
-function logFailure(stepLabel, failedPhrase, pageText) {
-  mkdirSync(REPORT_DIR, { recursive: true });
-  const row = [
-    new Date().toISOString(), TEST_NAME, stepLabel, failedPhrase, pageText.slice(0, 400),
-  ].map(csvEscape).join(',') + '\n';
-  appendFileSync(REPORT_PATH, row);
-}
-
-async function checkPhraseGroups(page, phraseGroups) {
-  for (const g of phraseGroups) {
-    let matched = false;
-    for (const phrase of g.phrases) {
-      const count = await page.getByText(phrase, { exact: false }).count().catch(() => 0);
-      if (count > 0) { matched = true; break; }
-    }
-    if (!matched) return g.label ?? g.phrases.join(' | ');
-  }
-  return null;
-}
 
 test.describe('Etihad Text ChatBot — Regression', () => {
   test(TEST_NAME, async ({ page }) => {
@@ -42,66 +19,45 @@ test.describe('Etihad Text ChatBot — Regression', () => {
 
     mkdirSync(REPORT_DIR, { recursive: true });
 
-    // ── Step 1: Navigate ───────────────────────────────────────────────────────
+    // ── Step 1-2: Navigate + open chat ────────────────────────────────────────
     console.log('[ETIHAD] Navigating to bot URL...');
     await navigateTo(page, BOT_URL);
-    await checkAndHandleCloudflare(page, '[ETIHAD]', REPORT_DIR);
-
-    // ── Step 2: Click "Text Chat" button ───────────────────────────────────────
-    const chatOpened = await openChatWidget(page, {
+    await openChat(page, {
       prefix: '[ETIHAD]',
+      reportDir: REPORT_DIR,
       labels: ['Text Chat', 'Chat', 'Start Chat'],
-      failScreenshotPath: join(REPORT_DIR, 'etihad-open-btn-not-found.png'),
       timeoutMs: 60000,
     });
-    await page.screenshot({ path: join(REPORT_DIR, 'etihad-startup.png') }).catch(() => {});
-    if (!chatOpened) {
-      logFailure('Step 2: Chat button', 'Text Chat button not found', '');
-      throw new Error('[ETIHAD] Text Chat button not found');
-    }
+    await screenshotStage(page, REPORT_DIR, 'etihad', 'startup');
     console.log('[ETIHAD] Clicked "Text Chat" button');
 
-    const input = page.getByRole('textbox');
-    await input.waitFor({ timeout: 30000 });
-
+    // ── Step 3: Wait for + validate greeting ──────────────────────────────────
     console.log('[ETIHAD] Waiting for greeting to load...');
-    await sleep(8000);
-    await page.screenshot({ path: join(REPORT_DIR, 'etihad-greeting.png') }).catch(() => {});
+    await waitForGreeting(page, { prefix: '[ETIHAD]', reportDir: REPORT_DIR });
+    await screenshotStage(page, REPORT_DIR, 'etihad', 'greeting');
 
-    // ── Step 3: Validate greeting ──────────────────────────────────────────────
     const greetingFail = await checkPhraseGroups(page, [
       { label: '"Welcome to Etihad Airways"', phrases: [
         'Welcome to Etihad Airways', 'Etihad Airways', 'Etihad',
       ]},
     ]);
     if (greetingFail) {
-      await page.screenshot({ path: join(REPORT_DIR, 'etihad-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', greetingFail, '');
+      await screenshotStage(page, REPORT_DIR, 'etihad', 'greeting-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, 'Step 3: Greeting', greetingFail, '']);
     }
     console.log(`[ETIHAD] ${greetingFail ? '[FAIL]' : '[PASS]'} Greeting validation`);
     expect(greetingFail, `Step 3 greeting missing: "${greetingFail}"`).toBeNull();
 
-    // ── Step 4: Send "Hello" ───────────────────────────────────────────────────
-    const step5Phrases = [
-      'How may I assist you', 'How may I help',
-      'assist you today', 'help you today',
-      'How can I help', 'How can I assist',
-      'What can I do for you', 'What can I help you with',
-      'Welcome to Etihad',
-    ];
-    const step5Base = {};
-    for (const p of step5Phrases) {
-      step5Base[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
-    }
-
+    // ── Step 4-5: Send "Hello" and validate response ──────────────────────────
     console.log('[ETIHAD] Sending "Hello"...');
+    const helloBaseline = await getAllFramesText(page);
     await sendMessage(page, 'Hello');
-
-    // ── Step 5: Validate response to "Hello" ──────────────────────────────────
-    const step5Arrived = await waitForAnyNewOccurrence(page, step5Phrases, step5Base, 45000);
-    if (!step5Arrived) console.log('[ETIHAD] Step 5 response did not arrive within 45s — asserting anyway');
+    await waitForBotResponse(page, {
+      prefix: '[ETIHAD]', reportDir: REPORT_DIR,
+      baselineText: helloBaseline, sentText: 'Hello', timeoutMs: 45000,
+    });
     await sleep(1000);
-    await page.screenshot({ path: join(REPORT_DIR, 'etihad-after-hello.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'etihad', 'after-hello');
 
     const step5Fail = await checkPhraseGroups(page, [
       { label: '"How may I assist you"', phrases: [
@@ -113,39 +69,22 @@ test.describe('Etihad Text ChatBot — Regression', () => {
       ]},
     ]);
     if (step5Fail) {
-      await page.screenshot({ path: join(REPORT_DIR, 'etihad-step5-fail.png') }).catch(() => {});
-      logFailure('Step 5: Hello response', step5Fail, '');
+      await screenshotStage(page, REPORT_DIR, 'etihad', 'step5-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, 'Step 5: Hello response', step5Fail, '']);
     }
     console.log(`[ETIHAD] ${step5Fail ? '[FAIL]' : '[PASS]'} Hello response validation`);
     expect(step5Fail, `Step 5 failed: missing "${step5Fail}"`).toBeNull();
 
-    // ── Step 6: Send "tell me about your services" ─────────────────────────────
-    const step7Phrases = [
-      'Just a moment',
-      'flights, check flight status',
-      'manage baggage',
-      'arrange special services',
-      'answer questions about our policies',
-      'travel requirements',
-      'check flight status',
-      'baggage',
-      'special services',
-      'policies',
-    ];
-    const step7Base = {};
-    for (const p of step7Phrases) {
-      step7Base[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
-    }
-
+    // ── Step 6-7: Send "tell me about your services" and validate response ───
     console.log('[ETIHAD] Sending "tell me about your services"...');
+    const servicesBaseline = await getAllFramesText(page);
     await sendMessage(page, 'tell me about your services');
-    await sleep(3000);
-
-    // ── Step 7: Validate services response ────────────────────────────────────
-    const step7Arrived = await waitForAnyNewOccurrence(page, step7Phrases, step7Base, 60000);
-    if (!step7Arrived) console.log('[ETIHAD] Step 7 response did not arrive within 60s — asserting anyway');
+    await waitForBotResponse(page, {
+      prefix: '[ETIHAD]', reportDir: REPORT_DIR,
+      baselineText: servicesBaseline, sentText: 'tell me about your services', timeoutMs: 60000,
+    });
     await sleep(1000);
-    await page.screenshot({ path: join(REPORT_DIR, 'etihad-after-services.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'etihad', 'after-services');
 
     const step7Fail = await checkPhraseGroups(page, [
       { label: 'services response', phrases: [
@@ -162,13 +101,13 @@ test.describe('Etihad Text ChatBot — Regression', () => {
       ]},
     ]);
     if (step7Fail) {
-      await page.screenshot({ path: join(REPORT_DIR, 'etihad-step7-fail.png') }).catch(() => {});
-      logFailure('Step 7: Services response', step7Fail, '');
+      await screenshotStage(page, REPORT_DIR, 'etihad', 'step7-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, 'Step 7: Services response', step7Fail, '']);
     }
     console.log(`[ETIHAD] ${step7Fail ? '[FAIL]' : '[PASS]'} Services response validation`);
     expect(step7Fail, `Step 7 failed: missing "${step7Fail}"`).toBeNull();
 
-    await page.screenshot({ path: join(REPORT_DIR, 'etihad-complete.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'etihad', 'complete');
     console.log('[ETIHAD] All steps passed — Etihad chatbot regression complete.');
   });
 });

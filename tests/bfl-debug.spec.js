@@ -1,6 +1,9 @@
 import { test } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { navigateTo } from './helpers/browser-utils.js';
+import { openChat } from './helpers/chat-launcher.js';
+import { sendMessage } from './helpers/response-helper.js';
 
 const BOT_URL =
   'https://demo.nextlevel.ai/std/#config=G74AmBQhSeflnMr2okssO_yM0BaIdHLA_ltRC6wAs7ZcAkq0MKGT2-GHo2UlmZ5rzshsm-BTJXfxo7VmQ5lFSLcsQZshM5Q4bJiOg1BM322ogCNy0Tf-dGS4ZuVWhDviwDrY4S3E8JmAu4ZQQ_aU7A3IEBf_7wZr3_HPJzFE-XDemFkDR2dbciXbkjRKVWyLEj1NpjSWNanV4XnPsgVHVdEK';
@@ -10,18 +13,11 @@ const REPORT_DIR = join(process.cwd(), 'reports');
 test('bfl-debug: inspect close button area', async ({ page }) => {
   mkdirSync(REPORT_DIR, { recursive: true });
 
-  await page.goto(BOT_URL);
-  await page.waitForTimeout(5000);
+  await navigateTo(page, BOT_URL);
 
-  // Open chat
-  await page.getByText('Text Chat').first().click();
-  await page.waitForTimeout(8000);
-
-  // Send a message to make the popup active
-  const input = page.getByRole('textbox');
-  await input.fill('hello');
-  await input.press('Enter');
-  await page.waitForTimeout(8000);
+  // Open chat and send a message to make the popup active
+  await openChat(page, { prefix: '[BFL-DEBUG]', labels: ['Text Chat'] });
+  await sendMessage(page, 'hello');
 
   await page.screenshot({ path: join(REPORT_DIR, 'bfl-debug-popup-open.png') });
 

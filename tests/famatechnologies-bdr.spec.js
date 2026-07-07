@@ -1,30 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { appendFileSync, mkdirSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { join } from 'path';
-import {
-  sleep, navigateTo, checkAndHandleCloudflare, openChatWidget,
-  waitForBotGreeting, waitForAnyNewOccurrence, sendMessage,
-} from './helpers/browser-utils.js';
+import { sleep, navigateTo, getAllFramesText } from './helpers/browser-utils.js';
+import { openChat } from './helpers/chat-launcher.js';
+import { waitForGreeting } from './helpers/greeting-helper.js';
+import { sendMessage, waitForBotResponse } from './helpers/response-helper.js';
+import { checkPhraseGroups, logFailure, reportPathFor, screenshotStage } from './helpers/logging-helper.js';
 
 const BOT_URL =
   'https://demo.nextlevel.ai/std/#config=G74AGORyTmV31QhynI7QflIA1MkB-29FLbACzL4F4oGmk9vhh4DSrCTSc-2Jgqb2P2V8G3-kgZqBPGBblsVCwA0jCmquFWAM23NqxpQUvfgbfya1dqB0ypUzWD4-kOAWWOgzIuEaoAqlT4VskIqi_P_dWMZ3-ItxhMKsP2-C_kC2Trxiu0TAhLE1TWBk0HlGlzEwBAuQxBCxqAC1AA';
 
 const REPORT_DIR  = join(process.cwd(), 'reports');
-const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
+const REPORT_PATH = reportPathFor('famatechnologies-bdr', REPORT_DIR);
 const BUG_TITLE   = 'Famatechnologies BDR name capture flow';
 const TEST_NAME   = 'Famatechnologies BDR name capture flow';
-
-function csvEscape(v) {
-  return `"${String(v).replace(/"/g, '""')}"`;
-}
-
-function logFailure(stepLabel, failedPhrase, pageText) {
-  mkdirSync(REPORT_DIR, { recursive: true });
-  const row = [
-    new Date().toISOString(), TEST_NAME, BUG_TITLE, stepLabel, failedPhrase, pageText.slice(0, 400),
-  ].map(csvEscape).join(',') + '\n';
-  appendFileSync(REPORT_PATH, row);
-}
 
 test.describe('Famatechnologies BDR — Name Capture Flow', () => {
   test(TEST_NAME, async ({ page }) => {
@@ -33,74 +22,65 @@ test.describe('Famatechnologies BDR — Name Capture Flow', () => {
 
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
     await navigateTo(page, BOT_URL);
-    await checkAndHandleCloudflare(page, '[FAMA]', REPORT_DIR);
-    await page.screenshot({ path: join(REPORT_DIR, 'fama-startup.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'fama', 'startup');
 
-    // Dismiss any "Got it" banner before capturing baselines
+    // Dismiss any "Got it" banner before opening chat
     const gotItBtn = page.getByRole('button', { name: /got it/i });
     const hasGotIt = await gotItBtn.waitFor({ timeout: 3000 }).then(() => true).catch(() => false);
     if (hasGotIt) await gotItBtn.click().catch(() => {});
     await sleep(500);
 
-    // ── Step 2: Capture baselines, open chat ──────────────────────────────────
-    const greetingPhrases = [
-      'Famatechnologies', 'famatechnologies', 'Noura', 'noura',
-      'first and last name', 'first name', 'last name', 'your name', 'name',
-      'keyboard', 'Hello', 'hello', 'Welcome', 'welcome', 'help', 'assist',
-    ];
-    const greetingBase = {};
-    for (const p of greetingPhrases) {
-      greetingBase[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
-    }
-
-    const chatOpened = await openChatWidget(page, {
+    // ── Step 2: Open chat ─────────────────────────────────────────────────────
+    await openChat(page, {
       prefix: '[FAMA]',
-      labels: ["Let's chat", "Let's Chat", "Let's Chat", 'Text Chat', 'Chat', 'Start Chat', 'Start New Session'],
-      failScreenshotPath: join(REPORT_DIR, 'fama-open-btn-not-found.png'),
+      reportDir: REPORT_DIR,
+      labels: ["Let's Chat", 'Text Chat', 'Chat', 'Start Chat', 'Start New Session'],
     });
-    if (!chatOpened) {
-      await page.screenshot({ path: join(REPORT_DIR, 'fama-open-btn-not-found.png') }).catch(() => {});
-      throw new Error('[FAMA] Chat button not found');
-    }
 
-    // ── Step 3: Wait for bot greeting ────────────────────────────────────────
+    // ── Step 3: Wait for + validate bot greeting ─────────────────────────────
     console.log('[FAMA] Waiting for bot greeting...');
-    const greeting = await waitForBotGreeting(page, greetingPhrases, greetingBase, 70000);
-    if (!greeting) {
-      await page.screenshot({ path: join(REPORT_DIR, 'fama-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', '');
-    }
-    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
-    console.log('[TEST] Greeting:', greeting);
-    await page.screenshot({ path: join(REPORT_DIR, 'fama-greeting.png') }).catch(() => {});
+    await waitForGreeting(page, { prefix: '[FAMA]', reportDir: REPORT_DIR, timeoutMs: 70000 });
+    await screenshotStage(page, REPORT_DIR, 'fama', 'greeting');
 
-    // ── Step 4: Send "Natali Test" ────────────────────────────────────────────
-    const step5Poll = [
-      'Thank', 'thank', 'phone', 'Natali', 'natali',
-      'great', 'Great', 'please', 'Please',
-      'contact', 'number', 'mobile', 'share', 'provide',
-      'enter', 'next', 'continue',
-    ];
-    const step5Base = {};
-    for (const p of step5Poll) {
-      step5Base[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    const greetingFail = await checkPhraseGroups(page, [
+      { label: 'greeting acknowledgement', phrases: [
+        'Famatechnologies', 'famatechnologies', 'Noura', 'noura',
+        'first and last name', 'first name', 'last name', 'your name', 'name',
+        'keyboard', 'Hello', 'hello', 'Welcome', 'welcome', 'help', 'assist',
+      ]},
+    ]);
+    if (greetingFail) {
+      await screenshotStage(page, REPORT_DIR, 'fama', 'greeting-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, BUG_TITLE, 'Step 3: Greeting', greetingFail, '']);
     }
+    expect(greetingFail, 'Step 3: bot did not send a greeting').toBeNull();
 
+    // ── Step 4-5: Send "Natali Test" and validate any bot response ───────────
     console.log('[FAMA] Greeting confirmed — sending "Natali Test"...');
+    const nameBaseline = await getAllFramesText(page);
     await sendMessage(page, 'Natali Test');
-    console.log('[TEST] User message sent');
+    console.log('[FAMA] User message sent');
+    await waitForBotResponse(page, {
+      prefix: '[FAMA]', reportDir: REPORT_DIR,
+      baselineText: nameBaseline, sentText: 'Natali Test', timeoutMs: 70000,
+    });
+    await screenshotStage(page, REPORT_DIR, 'fama', 'after-name');
 
-    // ── Step 5: Wait for any non-empty bot response ───────────────────────────
-    const step5Trigger = await waitForAnyNewOccurrence(page, step5Poll, step5Base, 70000);
-    if (!step5Trigger) {
-      await page.screenshot({ path: join(REPORT_DIR, 'fama-name-fail.png') }).catch(() => {});
-      logFailure('Step 5: Name response', 'no new bot response detected', '');
+    const step5Fail = await checkPhraseGroups(page, [
+      { label: 'name acknowledgement', phrases: [
+        'Thank', 'thank', 'phone', 'Natali', 'natali',
+        'great', 'Great', 'please', 'Please',
+        'contact', 'number', 'mobile', 'share', 'provide',
+        'enter', 'next', 'continue',
+      ]},
+    ]);
+    if (step5Fail) {
+      await screenshotStage(page, REPORT_DIR, 'fama', 'name-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, BUG_TITLE, 'Step 5: Name response', step5Fail, '']);
     }
-    expect(step5Trigger, 'Step 5 failed: bot gave no response after sending name').toBeTruthy();
-    console.log('[TEST] Bot response received:', step5Trigger);
-    await page.screenshot({ path: join(REPORT_DIR, 'fama-after-name.png') }).catch(() => {});
+    expect(step5Fail, 'Step 5: bot gave no expected response after sending name').toBeNull();
 
-    await page.screenshot({ path: join(REPORT_DIR, 'fama-complete.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'fama', 'complete');
     console.log('[FAMA] Test complete — greeting and name response verified.');
   });
 });

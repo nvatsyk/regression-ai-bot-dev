@@ -1,29 +1,18 @@
 import { test, expect } from '@playwright/test';
-import { appendFileSync, mkdirSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { join } from 'path';
-import {
-  navigateTo, checkAndHandleCloudflare, openChatWidget,
-  waitForBotGreeting, waitForAnyNewOccurrence, sendMessage,
-} from './helpers/browser-utils.js';
+import { navigateTo, getAllFramesText } from './helpers/browser-utils.js';
+import { openChat } from './helpers/chat-launcher.js';
+import { waitForGreeting } from './helpers/greeting-helper.js';
+import { sendMessage, waitForBotResponse } from './helpers/response-helper.js';
+import { checkPhraseGroups, logFailure, reportPathFor, screenshotStage } from './helpers/logging-helper.js';
 
 const BOT_URL = 'https://sdemo.nextlevel.ai/jak-delivery';
 
 const REPORT_DIR  = join(process.cwd(), 'reports');
-const REPORT_PATH = join(REPORT_DIR, 'fail-report.csv');
+const REPORT_PATH = reportPathFor('jak-delivery', REPORT_DIR);
 const BUG_TITLE   = 'JAKDelivery greeting and services flow';
 const TEST_NAME   = 'JAKDelivery greeting and services flow';
-
-function csvEscape(v) {
-  return `"${String(v).replace(/"/g, '""')}"`;
-}
-
-function logFailure(stepLabel, failedPhrase, pageText) {
-  mkdirSync(REPORT_DIR, { recursive: true });
-  const row = [
-    new Date().toISOString(), TEST_NAME, BUG_TITLE, stepLabel, failedPhrase, pageText.slice(0, 400),
-  ].map(csvEscape).join(',') + '\n';
-  appendFileSync(REPORT_PATH, row);
-}
 
 test.describe('JAKDelivery — Greeting and Services Flow', () => {
   test.use({ locale: 'en-US' });
@@ -35,66 +24,57 @@ test.describe('JAKDelivery — Greeting and Services Flow', () => {
     // ── Step 1: Navigate ──────────────────────────────────────────────────────
     console.log('[JAK] Navigating to JAKDelivery bot...');
     await navigateTo(page, BOT_URL);
-    await page.screenshot({ path: join(REPORT_DIR, 'jak-startup.png') }).catch(() => {});
-    await checkAndHandleCloudflare(page, '[JAK]', REPORT_DIR);
+    await screenshotStage(page, REPORT_DIR, 'jak', 'startup');
 
-    // ── Step 2: Capture baselines, open chat ─────────────────────────────────
-    const greetingPoll = [
-      'JAKdelivery', 'Fatima',
-      'track', 'Track', 'shipment', 'Shipment',
-      'delivery', 'Delivery', 'Hello', 'Welcome',
-    ];
-    const greetingBaselines = {};
-    for (const p of greetingPoll) {
-      greetingBaselines[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
-    }
-
-    const chatOpened = await openChatWidget(page, {
+    // ── Step 2: Open chat ─────────────────────────────────────────────────────
+    await openChat(page, {
       prefix: '[JAK]',
-      labels: ["Let's Chat", "Let's Chat", 'Text Chat', 'Chat', 'Start Chat', 'Start New Session'],
-      failScreenshotPath: join(REPORT_DIR, 'jak-open-btn-not-found.png'),
+      reportDir: REPORT_DIR,
+      labels: ["Let's Chat", 'Text Chat', 'Chat', 'Start Chat', 'Start New Session'],
     });
-    if (!chatOpened) {
-      logFailure('Step 2: Chat button', 'no chat button found', '');
-      throw new Error('[JAK] Chat button not found');
-    }
     console.log('[JAK] Found chat button — clicking.');
 
-    // ── Step 3: Wait for bot greeting ────────────────────────────────────────
-    const greeting = await waitForBotGreeting(page, greetingPoll, greetingBaselines, 70000);
-    if (!greeting) {
-      await page.screenshot({ path: join(REPORT_DIR, 'jak-greeting-fail.png') }).catch(() => {});
-      logFailure('Step 3: Greeting', 'no greeting received', '');
-    }
-    expect(greeting, 'Step 3: bot did not send a greeting').toBeTruthy();
-    console.log('[TEST] Greeting:', greeting);
-    await page.screenshot({ path: join(REPORT_DIR, 'jak-greeting.png') }).catch(() => {});
+    // ── Step 3: Wait for + validate bot greeting ─────────────────────────────
+    await waitForGreeting(page, { prefix: '[JAK]', reportDir: REPORT_DIR, timeoutMs: 70000 });
+    await screenshotStage(page, REPORT_DIR, 'jak', 'greeting');
 
-    // ── Step 4: Send "tell me about your services" ────────────────────────────
-    const servicesPoll = [
-      'shipping', 'Shipping', 'delivery', 'Delivery', 'services', 'Services',
-      'tracking', 'Tracking', 'pickup', 'Pickup', 'logistics', 'Logistics',
-      'shipment', 'Shipment', 'JAKdelivery', 'JAK',
-    ];
-    const servicesBaselines = {};
-    for (const p of servicesPoll) {
-      servicesBaselines[p] = await page.getByText(p, { exact: false }).count().catch(() => 0);
+    const greetingFail = await checkPhraseGroups(page, [
+      { label: 'greeting mention', phrases: [
+        'JAKdelivery', 'Fatima',
+        'track', 'Track', 'shipment', 'Shipment',
+        'delivery', 'Delivery', 'Hello', 'Welcome',
+      ]},
+    ]);
+    if (greetingFail) {
+      await screenshotStage(page, REPORT_DIR, 'jak', 'greeting-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, BUG_TITLE, 'Step 3: Greeting', greetingFail, '']);
     }
+    expect(greetingFail, 'Step 3: bot did not send a greeting').toBeNull();
 
+    // ── Step 4-5: Send "tell me about your services" and validate response ───
+    const servicesBaseline = await getAllFramesText(page);
     await sendMessage(page, 'tell me about your services');
-    console.log('[TEST] User message sent');
+    console.log('[JAK] User message sent');
+    await waitForBotResponse(page, {
+      prefix: '[JAK]', reportDir: REPORT_DIR,
+      baselineText: servicesBaseline, sentText: 'tell me about your services', timeoutMs: 70000,
+    });
+    await screenshotStage(page, REPORT_DIR, 'jak', 'services-response');
 
-    // ── Step 5: Validate bot responded ───────────────────────────────────────
-    const botResponse = await waitForAnyNewOccurrence(page, servicesPoll, servicesBaselines, 70000);
-    if (!botResponse) {
-      await page.screenshot({ path: join(REPORT_DIR, 'jak-services-fail.png') }).catch(() => {});
-      logFailure('Step 5: Services response', 'bot did not respond', '');
+    const servicesFail = await checkPhraseGroups(page, [
+      { label: 'services response', phrases: [
+        'shipping', 'Shipping', 'delivery', 'Delivery', 'services', 'Services',
+        'tracking', 'Tracking', 'pickup', 'Pickup', 'logistics', 'Logistics',
+        'shipment', 'Shipment', 'JAKdelivery', 'JAK',
+      ]},
+    ]);
+    if (servicesFail) {
+      await screenshotStage(page, REPORT_DIR, 'jak', 'services-fail');
+      logFailure(REPORT_PATH, [TEST_NAME, BUG_TITLE, 'Step 5: Services response', servicesFail, '']);
     }
-    expect(botResponse, 'Step 5: bot did not respond to "tell me about your services"').toBeTruthy();
-    console.log('[TEST] Bot response received:', botResponse);
-    await page.screenshot({ path: join(REPORT_DIR, 'jak-services-response.png') }).catch(() => {});
+    expect(servicesFail, 'Step 5: bot did not respond to "tell me about your services"').toBeNull();
 
-    await page.screenshot({ path: join(REPORT_DIR, 'jak-complete.png') }).catch(() => {});
+    await screenshotStage(page, REPORT_DIR, 'jak', 'complete');
     console.log('[JAK] Test complete — JAKDelivery greeting and services flow verified.');
   });
 });
