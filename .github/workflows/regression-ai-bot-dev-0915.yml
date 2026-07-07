@@ -5,7 +5,7 @@ on:
 
   schedule:
     # 05:15 Kyiv time = 02:15 UTC
-    - cron: '15 2 * * *'
+    - cron: '15 2 * * 1-5'
 
 concurrency:
   group: regression-ai-bot-tests-0915

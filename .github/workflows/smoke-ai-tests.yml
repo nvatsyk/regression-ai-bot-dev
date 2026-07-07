@@ -5,7 +5,7 @@ on:
 
   schedule:
     # 05:40 Kyiv time = 02:40 UTC
-    - cron: '40 2 * * *'
+    - cron: '40 2 * * 1-5'
 
 concurrency:
   group: smoke-ai-tests
