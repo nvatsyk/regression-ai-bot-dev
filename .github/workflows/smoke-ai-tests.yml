@@ -86,98 +86,102 @@ jobs:
             }
 
       # ── Etihad ChatBot ─────────────────────────────────────────────────────
+      # Disabled on CI: tests/etihad-chatbot.spec.js is `test.describe.skip`'d in code
+      # (0 tests actually run, which reports a misleading PASS). Re-enable once un-skipped.
 
-      - name: Run Etihad ChatBot smoke test
-        id: etihad_chatbot
-        env:
-          PLAYWRIGHT_HTML_REPORT: playwright-report-etihad-chatbot
-        run: npx playwright test tests/etihad-chatbot.spec.js --reporter=html --workers=1
-        continue-on-error: true
+      # - name: Run Etihad ChatBot smoke test
+      #   id: etihad_chatbot
+      #   env:
+      #     PLAYWRIGHT_HTML_REPORT: playwright-report-etihad-chatbot
+      #   run: npx playwright test tests/etihad-chatbot.spec.js --reporter=html --workers=1
+      #   continue-on-error: true
 
-      - name: Upload Etihad ChatBot HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: etihad-chatbot-playwright-report
-          path: playwright-report-etihad-chatbot/
-          if-no-files-found: ignore
+      # - name: Upload Etihad ChatBot HTML report
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: etihad-chatbot-playwright-report
+      #     path: playwright-report-etihad-chatbot/
+      #     if-no-files-found: ignore
 
-      - name: Upload Etihad ChatBot reports (screenshots + CSV)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: etihad-chatbot-reports
-          path: reports/
-          if-no-files-found: ignore
+      # - name: Upload Etihad ChatBot reports (screenshots + CSV)
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: etihad-chatbot-reports
+      #     path: reports/
+      #     if-no-files-found: ignore
 
-      - name: Slack Etihad ChatBot PASS notification
-        if: steps.etihad_chatbot.outcome == 'success'
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "✅ Etihad ChatBot smoke test passed\nBot correctly handled greeting, Hello, and services flow.\nTest: tests/etihad-chatbot.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
+      # - name: Slack Etihad ChatBot PASS notification
+      #   if: steps.etihad_chatbot.outcome == 'success'
+      #   uses: slackapi/slack-github-action@v2.0.0
+      #   with:
+      #     webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #     webhook-type: incoming-webhook
+      #     payload: |
+      #       {
+      #         "text": "✅ Etihad ChatBot smoke test passed\nBot correctly handled greeting, Hello, and services flow.\nTest: tests/etihad-chatbot.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #       }
 
-      - name: Slack Etihad ChatBot FAIL notification
-        if: steps.etihad_chatbot.outcome == 'failure'
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "❌ Etihad ChatBot smoke test failed\nFlow: greeting → Hello → services.\nTest: tests/etihad-chatbot.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
+      # - name: Slack Etihad ChatBot FAIL notification
+      #   if: steps.etihad_chatbot.outcome == 'failure'
+      #   uses: slackapi/slack-github-action@v2.0.0
+      #   with:
+      #     webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
+      #     webhook-type: incoming-webhook
+      #     payload: |
+      #       {
+      #         "text": "❌ Etihad ChatBot smoke test failed\nFlow: greeting → Hello → services.\nTest: tests/etihad-chatbot.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #       }
 
       # ── Heck Agency Assistant ──────────────────────────────────────────────
+      # Disabled on CI: tests/heck-assistant.spec.js is `test.describe.skip`'d in code
+      # (0 tests actually run, which reports a misleading PASS). Re-enable once un-skipped.
 
-      - name: Run Heck Agency Assistant smoke test
-        id: heck_assistant
-        env:
-          PLAYWRIGHT_HTML_REPORT: playwright-report-heck-assistant
-        run: npx playwright test tests/heck-assistant.spec.js --reporter=html --workers=1
-        continue-on-error: true
+      # - name: Run Heck Agency Assistant smoke test
+      #   id: heck_assistant
+      #   env:
+      #     PLAYWRIGHT_HTML_REPORT: playwright-report-heck-assistant
+      #   run: npx playwright test tests/heck-assistant.spec.js --reporter=html --workers=1
+      #   continue-on-error: true
 
-      - name: Upload Heck Agency Assistant HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: heck-assistant-playwright-report
-          path: playwright-report-heck-assistant/
-          if-no-files-found: ignore
+      # - name: Upload Heck Agency Assistant HTML report
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: heck-assistant-playwright-report
+      #     path: playwright-report-heck-assistant/
+      #     if-no-files-found: ignore
 
-      - name: Upload Heck Agency Assistant reports (screenshots + CSV)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: heck-assistant-reports
-          path: reports/
-          if-no-files-found: ignore
+      # - name: Upload Heck Agency Assistant reports (screenshots + CSV)
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: heck-assistant-reports
+      #     path: reports/
+      #     if-no-files-found: ignore
 
-      - name: Slack Heck Agency Assistant PASS notification
-        if: steps.heck_assistant.outcome == 'success'
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "✅ Heck Agency Assistant smoke test passed\nBot correctly handled greeting, Yes, and services flow.\nTest: tests/heck-assistant.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
+      # - name: Slack Heck Agency Assistant PASS notification
+      #   if: steps.heck_assistant.outcome == 'success'
+      #   uses: slackapi/slack-github-action@v2.0.0
+      #   with:
+      #     webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #     webhook-type: incoming-webhook
+      #     payload: |
+      #       {
+      #         "text": "✅ Heck Agency Assistant smoke test passed\nBot correctly handled greeting, Yes, and services flow.\nTest: tests/heck-assistant.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #       }
 
-      - name: Slack Heck Agency Assistant FAIL notification
-        if: steps.heck_assistant.outcome == 'failure'
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "❌ Heck Agency Assistant smoke test failed\nFlow: greeting → Yes → services.\nTest: tests/heck-assistant.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
+      # - name: Slack Heck Agency Assistant FAIL notification
+      #   if: steps.heck_assistant.outcome == 'failure'
+      #   uses: slackapi/slack-github-action@v2.0.0
+      #   with:
+      #     webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
+      #     webhook-type: incoming-webhook
+      #     payload: |
+      #       {
+      #         "text": "❌ Heck Agency Assistant smoke test failed\nFlow: greeting → Yes → services.\nTest: tests/heck-assistant.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #       }
 
       # ── Vodafone Cook Islands — Moana AI ──────────────────────────────────────
 
@@ -229,5 +233,5 @@ jobs:
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
-        if: steps.royal_commission.outcome == 'failure' || steps.etihad_chatbot.outcome == 'failure' || steps.heck_assistant.outcome == 'failure' || steps.vodafone_assistant.outcome == 'failure'
+        if: steps.royal_commission.outcome == 'failure' || steps.vodafone_assistant.outcome == 'failure'
         run: exit 1
