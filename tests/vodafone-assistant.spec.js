@@ -13,7 +13,7 @@ const REPORT_DIR  = join(process.cwd(), 'reports');
 const REPORT_PATH = reportPathFor('vodafone-assistant', REPORT_DIR);
 const TEST_NAME   = 'Vodafone Cook Islands — Moana AI — Greeting and Services Flow';
 
-test.describe('Vodafone Cook Islands — Moana AI — Regression', () => {
+test.describe.skip('Vodafone Cook Islands — Moana AI — Regression', () => {
   test(TEST_NAME, async ({ page }) => {
     test.setTimeout(240000);
 

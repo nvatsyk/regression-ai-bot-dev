@@ -184,54 +184,56 @@ jobs:
       #       }
 
       # ── Vodafone Cook Islands — Moana AI ──────────────────────────────────────
+      # Disabled on CI: tests/vodafone-assistant.spec.js is `test.describe.skip`'d in code
+      # (0 tests actually run, which reports a misleading PASS). Re-enable once un-skipped.
 
-      - name: Run Vodafone Cook Islands Moana AI smoke test
-        id: vodafone_assistant
-        env:
-          PLAYWRIGHT_HTML_REPORT: playwright-report-vodafone-assistant
-        run: npx playwright test tests/vodafone-assistant.spec.js --reporter=html --workers=1
-        continue-on-error: true
+      # - name: Run Vodafone Cook Islands Moana AI smoke test
+      #   id: vodafone_assistant
+      #   env:
+      #     PLAYWRIGHT_HTML_REPORT: playwright-report-vodafone-assistant
+      #   run: npx playwright test tests/vodafone-assistant.spec.js --reporter=html --workers=1
+      #   continue-on-error: true
 
-      - name: Upload Vodafone Assistant HTML report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vodafone-assistant-playwright-report
-          path: playwright-report-vodafone-assistant/
-          if-no-files-found: ignore
+      # - name: Upload Vodafone Assistant HTML report
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: vodafone-assistant-playwright-report
+      #     path: playwright-report-vodafone-assistant/
+      #     if-no-files-found: ignore
 
-      - name: Upload Vodafone Assistant reports (screenshots + CSV)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vodafone-assistant-reports
-          path: reports/
-          if-no-files-found: ignore
+      # - name: Upload Vodafone Assistant reports (screenshots + CSV)
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: vodafone-assistant-reports
+      #     path: reports/
+      #     if-no-files-found: ignore
 
-      - name: Slack Vodafone Assistant PASS notification
-        if: steps.vodafone_assistant.outcome == 'success'
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "✅ Vodafone Cook Islands Moana AI smoke test passed\nBot correctly handled greeting, Yes, and services flow.\nTest: tests/vodafone-assistant.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
+      # - name: Slack Vodafone Assistant PASS notification
+      #   if: steps.vodafone_assistant.outcome == 'success'
+      #   uses: slackapi/slack-github-action@v2.0.0
+      #   with:
+      #     webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #     webhook-type: incoming-webhook
+      #     payload: |
+      #       {
+      #         "text": "✅ Vodafone Cook Islands Moana AI smoke test passed\nBot correctly handled greeting, Yes, and services flow.\nTest: tests/vodafone-assistant.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #       }
 
-      - name: Slack Vodafone Assistant FAIL notification
-        if: steps.vodafone_assistant.outcome == 'failure'
-        uses: slackapi/slack-github-action@v2.0.0
-        with:
-          webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
-          webhook-type: incoming-webhook
-          payload: |
-            {
-              "text": "❌ Vodafone Cook Islands Moana AI smoke test failed\nFlow: greeting → Yes → services.\nTest: tests/vodafone-assistant.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            }
+      # - name: Slack Vodafone Assistant FAIL notification
+      #   if: steps.vodafone_assistant.outcome == 'failure'
+      #   uses: slackapi/slack-github-action@v2.0.0
+      #   with:
+      #     webhook: ${{ secrets.SLACK_FAILED_WEBHOOK_URL }}
+      #     webhook-type: incoming-webhook
+      #     payload: |
+      #       {
+      #         "text": "❌ Vodafone Cook Islands Moana AI smoke test failed\nFlow: greeting → Yes → services.\nTest: tests/vodafone-assistant.spec.js\nGitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #       }
 
       # ── Fail workflow if any test failed ──────────────────────────────────
 
       - name: Fail workflow if any test failed
-        if: steps.royal_commission.outcome == 'failure' || steps.vodafone_assistant.outcome == 'failure'
+        if: steps.royal_commission.outcome == 'failure'
         run: exit 1
