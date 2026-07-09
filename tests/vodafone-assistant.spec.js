@@ -15,19 +15,24 @@ const TEST_NAME   = 'Vodafone Cook Islands — Moana AI — Greeting and Service
 
 test.describe('Vodafone Cook Islands — Moana AI — Regression', () => {
   test(TEST_NAME, async ({ page }) => {
-    test.setTimeout(180000);
+    test.setTimeout(240000);
 
     mkdirSync(REPORT_DIR, { recursive: true });
 
     // ── Step 1-2: Navigate + open chat (label matching is case-insensitive,
     // so "TEXT CHAT" matches the canonical "Text Chat" entry automatically) ──
+    // BOT_URL redirects into /frm/ mode, which embeds the live vodafone.co.ck
+    // production site (a Wix site with third-party analytics trackers) in a
+    // cross-origin iframe — slower and more variable to load than the other
+    // bots' lightweight /std/ demo pages, so give it more than the 60s that
+    // was timing out on CI.
     console.log('[VODAFONE] Navigating to bot URL...');
     await navigateTo(page, BOT_URL);
     await openChat(page, {
       prefix: '[VODAFONE]',
       reportDir: REPORT_DIR,
       labels: ['Text Chat', 'Chat', 'Start Chat'],
-      timeoutMs: 60000,
+      timeoutMs: 120000,
     });
     await screenshotStage(page, REPORT_DIR, 'vodafone', 'startup');
     console.log('[VODAFONE] Clicked "TEXT CHAT" button');
