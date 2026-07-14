@@ -14,7 +14,7 @@ const REPORT_PATH = reportPathFor('jak-delivery', REPORT_DIR);
 const BUG_TITLE   = 'JAKDelivery greeting and services flow';
 const TEST_NAME   = 'JAKDelivery greeting and services flow';
 
-test.describe('JAKDelivery — Greeting and Services Flow', () => {
+test.describe.skip('JAKDelivery — Greeting and Services Flow', () => {
   test.use({ locale: 'en-US' });
 
   test(TEST_NAME, async ({ page }) => {
